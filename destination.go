@@ -123,11 +123,12 @@ func terminalName(s string) bool {
 }
 
 func enrichDestination(ctx context.Context, e *Event) {
+	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	defer cancel()
+	enrichBrowser(ctx, e, nativeBrowserURL)
 	if !terminalName(e.Destination.Application.Name.Value + " " + e.Destination.Application.Executable.Value) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
-	defer cancel()
 	enrichTerminal(ctx, e, processInspector{
 		activeTTY: activeTerminalTTY,
 		list:      systemProcesses,

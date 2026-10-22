@@ -5,7 +5,7 @@ package pastetrail
 /*
 #cgo darwin LDFLAGS: -framework AppKit -framework ApplicationServices
 #cgo linux LDFLAGS: -lxcb -lxcb-record
-#cgo windows LDFLAGS: -luser32 -lshell32 -lkernel32
+#cgo windows LDFLAGS: -luser32 -lshell32 -lkernel32 -lpsapi
 #include "native.h"
 #include <stdlib.h>
 */

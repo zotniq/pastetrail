@@ -70,11 +70,24 @@ type Content struct {
 
 // Application identifies the foreground destination.
 type Application struct {
-	Name        Field[string] `json:"name"`
-	Executable  Field[string] `json:"executable"`
-	PID         Field[int]    `json:"pid"`
-	WindowID    Field[string] `json:"window_id"`
-	WindowTitle Field[string] `json:"window_title"`
+	Name          Field[string]        `json:"name"`
+	Executable    Field[string]        `json:"executable"`
+	PID           Field[int]           `json:"pid"`
+	WindowID      Field[string]        `json:"window_id"`
+	WindowTitle   Field[string]        `json:"window_title"`
+	BundleID      Field[string]        `json:"bundle_id"`
+	BundlePath    Field[string]        `json:"bundle_path"`
+	Bounds        Field[*WindowBounds] `json:"bounds"`
+	ContentBounds Field[*WindowBounds] `json:"content_bounds"`
+	MemoryUsage   Field[uint64]        `json:"memory_usage"` // Resident bytes of the owner process.
+}
+
+// WindowBounds uses the OS's desktop coordinates, subject to its display scaling.
+type WindowBounds struct {
+	X      int64 `json:"x"`
+	Y      int64 `json:"y"`
+	Width  int64 `json:"width"`
+	Height int64 `json:"height"`
 }
 
 // Browser describes a tab independently of the browser process ID.

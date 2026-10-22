@@ -1,10 +1,11 @@
-#include "../../native_terminal_darwin.m"
+#include "../../native_automation_darwin.m"
 #include <assert.h>
 #include <string.h>
 
 static OSStatus permission_status, send_status, reply_status;
 static unsigned sends;
 static bool expect_iterm;
+static int browser_mode;
 static const char *reply_tty = "/dev/ttys003";
 
 static OSStatus fixture_permission(const AEAddressDesc *target, AEEventClass cls, AEEventID event,
@@ -24,11 +25,16 @@ static OSStatus fixture_send(const AppleEvent *event, AppleEvent *reply, AESendM
     assert(AEGetParamDesc(event, keyDirectObject, typeWildCard, &direct) == noErr);
     NSAppleEventDescriptor *spec =
         [[[NSAppleEventDescriptor alloc] initWithAEDescNoCopy:&direct] autorelease];
-    assert([[spec descriptorForKeyword:keyAEKeyData] typeCodeValue] ==
-           (expect_iterm ? 'Stty' : 'ttty'));
+    assert(
+        [[spec descriptorForKeyword:keyAEKeyData] typeCodeValue] ==
+        (browser_mode ? (browser_mode == 2 ? 'pURL' : 'URL ') : (expect_iterm ? 'Stty' : 'ttty')));
     NSAppleEventDescriptor *session = [spec descriptorForKeyword:keyAEContainer];
-    assert([[session descriptorForKeyword:keyAEKeyData] typeCodeValue] ==
-           (expect_iterm ? 'Wcsn' : 'tcnt'));
+    if (browser_mode == 2) {
+        assert([[session descriptorForKeyword:keyAEDesiredClass] typeCodeValue] == cDocument);
+    } else {
+        assert([[session descriptorForKeyword:keyAEKeyData] typeCodeValue] ==
+               (browser_mode ? 'acTa' : (expect_iterm ? 'Wcsn' : 'tcnt')));
+    }
     if (send_status)
         return send_status;
     NSAppleEventDescriptor *response =
@@ -80,6 +86,12 @@ int main(void) {
         assert(read_terminal_tty(0, true, tty, sizeof(tty), fixture_permission, fixture_send) ==
                paramErr);
         assert(read_terminal_tty(1353, true, tty, 0, fixture_permission, fixture_send) == paramErr);
-        puts("terminal session Apple Events, permissions, errors, and bounds passed");
+        reply_tty = "https://example.com/";
+        for (browser_mode = 1; browser_mode <= 2; browser_mode++) {
+            assert(read_app_string(1353, browser_url_spec(browser_mode), tty, sizeof(tty),
+                                   fixture_permission, fixture_send) == noErr);
+            assert(strcmp(tty, reply_tty) == 0);
+        }
+        puts("terminal/browser Apple Events, permissions, errors, and bounds passed");
     }
 }

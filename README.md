@@ -45,7 +45,7 @@ A standalone daemon cannot guarantee every paste attempt across all applications
 | Middle-click | iTerm2 saved clipboard/selection bindings; inferred | Unavailable | PRIMARY selection; recipient unavailable |
 | Text, HTML, RTF, file references | Available formats | Available formats | Available formats; incremental transfers unavailable |
 | Application/PID/window | Event target PID; available app/window attributes | Available OS attributes | Available window properties; local PID only |
-| Browser | Window title; document URL when Accessibility exposes it | Window title | Window title |
+| Browser | Window title; active URL through Automation in Safari/Chromium browsers; Accessibility fallback | Window title | Window title |
 | Terminal command, PID, cwd | iTerm2/Terminal active TTY; unambiguous local foreground process | Unavailable | Unambiguous local TTY |
 | tmux | Active pane on default server socket | Unavailable | Active pane on default server socket |
 
@@ -74,6 +74,14 @@ require Automation access. To authorize iTerm2 from the terminal running the dae
 `osascript -e 'tell application "iTerm2" to get tty of current session of current window'`.
 For Terminal.app, use `osascript -e 'tell application "Terminal" to get tty of selected tab of front window'`.
 The daemon reports denied access without requesting permission from its input callback.
+Browser URLs use the same application scripting interfaces as `get-windows`, addressed
+to the paste event's PID. Chrome/Edge/Brave/Vivaldi/Opera/Arc and Safari families are
+supported; Firefox does not expose this interface. To authorize Chrome from the daemon's
+terminal, run `osascript -e 'tell application "Google Chrome" to get URL of active tab of front window'`.
+For Safari, use `osascript -e 'tell application "Safari" to get URL of front document'`.
+Browser URL collection remains macOS-only; tab IDs, renderer PIDs, and frames remain unavailable.
+Window records include available bounds, owner resident-memory bytes, macOS bundle ID/path,
+and Windows content bounds. Coordinates use the OS's desktop coordinate system.
 Windows requires the interactive input desktop, not a session-zero service.
 Linux requires an X11 session with RECORD and the `libxcb`/`libxcb-record` libraries.
 Linux release jobs use Ubuntu 24.04; older libc versions are not a compatibility promise.

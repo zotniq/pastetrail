@@ -16,31 +16,40 @@ static NSAppleEventDescriptor *property_spec(OSType property, NSAppleEventDescri
     return [spec coerceToDescriptorType:typeObjectSpecifier];
 }
 
-static NSAppleEventDescriptor *terminal_tty_spec(bool iterm) {
-    NSAppleEventDescriptor *root = [NSAppleEventDescriptor nullDescriptor];
-    if (iterm) {
-        NSAppleEventDescriptor *window = property_spec('Crwn', root);
-        return property_spec('Stty', property_spec('Wcsn', window));
-    }
+static NSAppleEventDescriptor *first_element_spec(OSType type) {
     NSAppleEventDescriptor *window = [NSAppleEventDescriptor recordDescriptor];
-    [window setDescriptor:[NSAppleEventDescriptor descriptorWithTypeCode:cWindow]
+    [window setDescriptor:[NSAppleEventDescriptor descriptorWithTypeCode:type]
                forKeyword:keyAEDesiredClass];
     [window setDescriptor:[NSAppleEventDescriptor descriptorWithEnumCode:formAbsolutePosition]
                forKeyword:keyAEKeyForm];
     [window setDescriptor:[NSAppleEventDescriptor descriptorWithInt32:1] forKeyword:keyAEKeyData];
-    [window setDescriptor:root forKeyword:keyAEContainer];
-    return property_spec(
-        'ttty', property_spec('tcnt', [window coerceToDescriptorType:typeObjectSpecifier]));
+    [window setDescriptor:[NSAppleEventDescriptor nullDescriptor] forKeyword:keyAEContainer];
+    return [window coerceToDescriptorType:typeObjectSpecifier];
+}
+
+static NSAppleEventDescriptor *terminal_tty_spec(bool iterm) {
+    if (iterm) {
+        NSAppleEventDescriptor *window =
+            property_spec('Crwn', [NSAppleEventDescriptor nullDescriptor]);
+        return property_spec('Stty', property_spec('Wcsn', window));
+    }
+    return property_spec('ttty', property_spec('tcnt', first_element_spec(cWindow)));
+}
+
+static NSAppleEventDescriptor *browser_url_spec(int kind) {
+    if (kind == 2)
+        return property_spec('pURL', first_element_spec(cDocument));
+    return property_spec('URL ', property_spec('acTa', first_element_spec(cWindow)));
 }
 
 // Address the captured PID, never a name that could launch or select another app.
-// These are read-only Apple Events on the enrichment thread, outside the input tap.
-static int read_terminal_tty(int pid, bool iterm, char *tty, size_t size,
-                             OSStatus (*permission)(const AEAddressDesc *, AEEventClass, AEEventID,
-                                                    Boolean),
-                             OSStatus (*send)(const AppleEvent *, AppleEvent *, AESendMode, long)) {
+// Read-only terminal/browser queries run on the enrichment thread, outside the input tap.
+static int read_app_string(int pid, NSAppleEventDescriptor *spec, char *output, size_t size,
+                           OSStatus (*permission)(const AEAddressDesc *, AEEventClass, AEEventID,
+                                                  Boolean),
+                           OSStatus (*send)(const AppleEvent *, AppleEvent *, AESendMode, long)) {
     if (size)
-        tty[0] = 0;
+        output[0] = 0;
     if (pid <= 0 || size == 0)
         return paramErr;
     @autoreleasepool {
@@ -57,7 +66,7 @@ static int read_terminal_tty(int pid, bool iterm, char *tty, size_t size,
                                             targetDescriptor:target
                                                     returnID:kAutoGenerateReturnID
                                                transactionID:kAnyTransactionID];
-        [request setParamDescriptor:terminal_tty_spec(iterm) forKeyword:keyDirectObject];
+        [request setParamDescriptor:spec forKeyword:keyDirectObject];
         AppleEvent reply = {typeNull, NULL};
         status =
             send([request aeDesc], &reply, kAEWaitReply | kAENeverInteract | kAEDontRecord, 15);
@@ -69,7 +78,7 @@ static int read_terminal_tty(int pid, bool iterm, char *tty, size_t size,
             if (status == noErr) {
                 if (!value || [value lengthOfBytesUsingEncoding:NSUTF8StringEncoding] >= size)
                     return errAECoercionFail;
-                snprintf(tty, size, "%s", [value UTF8String]);
+                snprintf(output, size, "%s", [value UTF8String]);
             }
         } else {
             AEDisposeDesc(&reply);
@@ -78,7 +87,23 @@ static int read_terminal_tty(int pid, bool iterm, char *tty, size_t size,
     }
 }
 
+static int read_terminal_tty(int pid, bool iterm, char *tty, size_t size,
+                             OSStatus (*permission)(const AEAddressDesc *, AEEventClass, AEEventID,
+                                                    Boolean),
+                             OSStatus (*send)(const AppleEvent *, AppleEvent *, AESendMode, long)) {
+    @autoreleasepool {
+        return read_app_string(pid, terminal_tty_spec(iterm), tty, size, permission, send);
+    }
+}
+
 int pt_terminal_tty(int pid, int iterm, char *tty, size_t size) {
     return read_terminal_tty(pid, iterm != 0, tty, size, AEDeterminePermissionToAutomateTarget,
                              AESendMessage);
+}
+
+int pt_browser_url(int pid, int kind, char *url, size_t size) {
+    @autoreleasepool {
+        return read_app_string(pid, browser_url_spec(kind), url, size,
+                               AEDeterminePermissionToAutomateTarget, AESendMessage);
+    }
 }

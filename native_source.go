@@ -48,7 +48,7 @@ func (s *nativeSource) Capabilities(context.Context) []Capability {
 		{Feature: "middle_click", Status: middleClickStatus(status), Reason: "X11 PRIMARY selection; macOS iTerm2 saved clipboard/selection middle-button bindings only; iTerm selection content and clicked pane identity unavailable"},
 		{Feature: "clipboard_content", Status: status, Reason: "text, HTML, RTF, and file references when exposed; snapshots can race clipboard changes"},
 		{Feature: "application_context", Status: status, Reason: "macOS event target PID or inferred Accessibility focus; foreground context on other platforms; available metadata depends on permissions and applications"},
-		{Feature: "browser_context", Status: "partial", Reason: "window title when exposed; document URL via macOS Accessibility only; tab IDs and focused frames unavailable"},
+		{Feature: "browser_context", Status: "partial", Reason: "macOS Safari/Chromium active-tab URL via Automation with Accessibility document fallback; window title elsewhere; tab IDs, renderer PIDs and frames unavailable"},
 		{Feature: "terminal_context", Status: "partial", Reason: "macOS iTerm2/Terminal active TTY via Automation; local foreground TTY processes and tmux when unambiguous; Windows console mapping and mouse-selected panes unavailable"},
 		{Feature: "ssh_remote_context", Status: "partial", Reason: "local SSH command and destination only; remote foreground process, PID, and working directory unavailable"},
 		{Feature: "container_context", Status: "partial", Reason: "container identity inferred from recognized local commands; interior process information unavailable"},
@@ -64,24 +64,30 @@ func middleClickStatus(status string) string {
 }
 
 type nativeSnapshot struct {
-	Key           string   `json:"key"`
-	TimeNS        int64    `json:"time_ns"`
-	CapturedNS    int64    `json:"captured_ns"`
-	Action        string   `json:"action"`
-	Kind          string   `json:"kind"`
-	Automated     *bool    `json:"automated"`
-	Source        string   `json:"source"`
-	TriggerReason string   `json:"trigger_reason"`
-	Button        int      `json:"button"`
-	Clicks        int      `json:"clicks"`
-	Modifiers     []string `json:"modifiers"`
-	PID           int      `json:"pid"`
-	App           string   `json:"app"`
-	Executable    string   `json:"executable"`
-	Window        string   `json:"window"`
-	Title         string   `json:"title"`
-	Document      string   `json:"document"`
-	TargetMethod  string   `json:"target_method"`
+	Key           string        `json:"key"`
+	TimeNS        int64         `json:"time_ns"`
+	CapturedNS    int64         `json:"captured_ns"`
+	Action        string        `json:"action"`
+	Kind          string        `json:"kind"`
+	Automated     *bool         `json:"automated"`
+	Source        string        `json:"source"`
+	TriggerReason string        `json:"trigger_reason"`
+	Button        int           `json:"button"`
+	Clicks        int           `json:"clicks"`
+	Modifiers     []string      `json:"modifiers"`
+	PID           int           `json:"pid"`
+	App           string        `json:"app"`
+	Executable    string        `json:"executable"`
+	Window        string        `json:"window"`
+	Title         string        `json:"title"`
+	Document      string        `json:"document"`
+	TargetMethod  string        `json:"target_method"`
+	BundleID      string        `json:"bundle_id"`
+	BundlePath    string        `json:"bundle_path"`
+	Bounds        *WindowBounds `json:"bounds"`
+	ContentBounds *WindowBounds `json:"content_bounds"`
+	MemoryUsage   *uint64       `json:"memory_usage"`
+	WindowMethod  string        `json:"window_method"`
 	Formats       []struct {
 		Type      string `json:"type"`
 		Data      []byte `json:"data"`
@@ -155,8 +161,28 @@ func decodeSnapshot(data []byte, limit int) (decodedObservation, error) {
 	if n.Title != "" {
 		a.WindowTitle = Known(n.Title)
 	}
+	if n.BundleID != "" {
+		a.BundleID = Known(n.BundleID)
+	}
+	if n.BundlePath != "" {
+		a.BundlePath = Known(n.BundlePath)
+	}
+	if n.Bounds != nil {
+		a.Bounds = Known(n.Bounds)
+	}
+	if n.ContentBounds != nil {
+		a.ContentBounds = Known(n.ContentBounds)
+	}
+	if n.MemoryUsage != nil {
+		a.MemoryUsage = Known(*n.MemoryUsage)
+	}
+	if n.WindowMethod == "frontmost_window_for_event_pid" {
+		reason := "frontmost visible window belonging to the input event target PID"
+		a.WindowID.Evidence, a.WindowID.Reason = Inferred, reason
+		a.Bounds.Evidence, a.Bounds.Reason = Inferred, reason
+	}
 	applyTargetEvidence(a, n.TargetMethod)
-	if browserName(a.Name.Value + " " + a.Executable.Value) {
+	if browserKind(a.BundleID.Value) != 0 || browserName(a.Name.Value+" "+a.Executable.Value) {
 		b := &Browser{}
 		if n.Title != "" {
 			b.Title = Field[string]{Value: n.Title, Evidence: Inferred, Reason: "window title of the attributed browser process"}
@@ -176,10 +202,19 @@ func applyTargetEvidence(a *Application, method string) {
 	case "accessibility_focus":
 		reason := "event target PID unavailable; focused application sampled through Accessibility after input"
 		a.PID.Evidence, a.PID.Reason = Inferred, reason
-		for _, f := range []*Field[string]{&a.Name, &a.Executable, &a.WindowID, &a.WindowTitle} {
+		for _, f := range []*Field[string]{&a.Name, &a.Executable, &a.WindowID, &a.WindowTitle, &a.BundleID, &a.BundlePath} {
 			if f.Evidence != "" {
 				f.Evidence, f.Reason = Inferred, reason
 			}
+		}
+		if a.Bounds.Value != nil {
+			a.Bounds.Evidence, a.Bounds.Reason = Inferred, reason
+		}
+		if a.ContentBounds.Value != nil {
+			a.ContentBounds.Evidence, a.ContentBounds.Reason = Inferred, reason
+		}
+		if a.MemoryUsage.Evidence != "" {
+			a.MemoryUsage.Evidence, a.MemoryUsage.Reason = Inferred, reason
 		}
 	case "unavailable":
 		reason := "event target PID and live Accessibility focus are unavailable; no cached application was used"

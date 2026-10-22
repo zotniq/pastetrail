@@ -4,6 +4,7 @@
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
 #include <limits.h>
+#include <libproc.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -69,15 +70,15 @@ static paste_target event_target(CGEventRef event, pid_t (*query_focus)(void)) {
     return (paste_target){0, "unavailable"};
 }
 
-static void destination_context(pt_json *j, CGEventRef event, pid_t (*query_focus)(void),
-                                bool accessibility) {
+static pid_t destination_context(pt_json *j, CGEventRef event, pid_t (*query_focus)(void),
+                                 bool accessibility) {
     /* NSWorkspace.frontmostApplication can remain cached until the MAIN run
      * loop advances. A Go library must not require its host to run AppKit's
      * main loop. Resolve each event's recipient before looking up app metadata. */
     paste_target target = event_target(event, query_focus);
     pt_property(j, "target_method", target.method);
     if (!target.pid)
-        return;
+        return 0;
     pt_put(j, ",\"pid\":");
     pt_number(j, target.pid);
     NSRunningApplication *app =
@@ -85,9 +86,11 @@ static void destination_context(pt_json *j, CGEventRef event, pid_t (*query_focu
     if (app && [app processIdentifier] == target.pid) {
         pt_property(j, "app", [[app localizedName] UTF8String]);
         pt_property(j, "executable", [[[app executableURL] path] UTF8String]);
+        pt_property(j, "bundle_id", [[app bundleIdentifier] UTF8String]);
+        pt_property(j, "bundle_path", [[[app bundleURL] path] UTF8String]);
     }
-    if (!accessibility)
-        return;
+    if (!accessibility || (event && CGEventGetType(event) == kCGEventOtherMouseUp))
+        return target.pid;
     AXUIElementRef application = AXUIElementCreateApplication(target.pid);
     AXUIElementSetMessagingTimeout(application, 0.03);
     CFTypeRef window = NULL;
@@ -105,6 +108,46 @@ static void destination_context(pt_json *j, CGEventRef event, pid_t (*query_focu
     if (window)
         CFRelease(window);
     CFRelease(application);
+    return target.pid;
+}
+
+static void window_metadata(pt_json *j, NSArray *windows, pid_t pid) {
+    for (NSDictionary *window in windows) {
+        if ([window[(id)kCGWindowOwnerPID] intValue] != pid ||
+            [window[(id)kCGWindowLayer] intValue] != 0 ||
+            [window[(id)kCGWindowAlpha] doubleValue] == 0)
+            continue;
+        CGRect bounds;
+        id rectangle = window[(id)kCGWindowBounds];
+        if (![rectangle isKindOfClass:[NSDictionary class]] ||
+            !CGRectMakeWithDictionaryRepresentation((__bridge CFDictionaryRef)rectangle, &bounds) ||
+            bounds.size.width < 50 || bounds.size.height < 50)
+            continue;
+        pt_property(j, "window", [[window[(id)kCGWindowNumber] stringValue] UTF8String]);
+        pt_property(j, "window_method", "frontmost_window_for_event_pid");
+        pt_bounds(j, "bounds", bounds.origin.x, bounds.origin.y, bounds.size.width,
+                  bounds.size.height);
+        break;
+    }
+}
+
+static void window_context(pt_json *j, pid_t pid, bool keyboard) {
+    if (pid <= 0)
+        return;
+    CFArrayRef windows = keyboard
+                             ? CGWindowListCopyWindowInfo(kCGWindowListOptionOnScreenOnly |
+                                                              kCGWindowListExcludeDesktopElements,
+                                                          kCGNullWindowID)
+                             : NULL;
+    if (windows) {
+        window_metadata(j, (__bridge NSArray *)windows, pid);
+        CFRelease(windows);
+    }
+    struct proc_taskinfo info;
+    if (proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &info, sizeof(info)) == sizeof(info)) {
+        pt_put(j, ",\"memory_usage\":");
+        pt_number(j, info.pti_resident_size);
+    }
 }
 
 static const char *iterm_pointer_source(NSDictionary *bindings, CGEventRef event) {
@@ -183,7 +226,8 @@ static void capture(CGEventRef event, const char *action, const char *source) {
                         "iTerm2 saved pointer binding; mouse reporting or runtime settings may "
                         "override it");
         }
-        destination_context(&j, event, focused_pid, AXIsProcessTrusted());
+        pid_t pid = destination_context(&j, event, focused_pid, AXIsProcessTrusted());
+        window_context(&j, pid, !mouse);
         if (strcmp(source, "iterm_selection") == 0) {
             pt_property(&j, "issue",
                         "iTerm2 keeps its most recent selection inside the application; its "

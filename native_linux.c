@@ -114,6 +114,26 @@ static void destination(pt_json *j) {
     char id[32];
     snprintf(id, sizeof(id), "%u", window);
     pt_property(j, "window", id);
+    xcb_get_geometry_reply_t *geometry = reply(control, xcb_get_geometry(control, window).sequence);
+    xcb_translate_coordinates_reply_t *position =
+        reply(control, xcb_translate_coordinates(control, window, root, 0, 0).sequence);
+    if (geometry && position) {
+        int64_t x = position->dst_x, y = position->dst_y, width = geometry->width,
+                height = geometry->height;
+        r = property(window, atom("_NET_FRAME_EXTENTS"), 4);
+        if (r && r->format == 32 && xcb_get_property_value_length(r) == 16) {
+            uint32_t extents[4];
+            memcpy(extents, xcb_get_property_value(r), sizeof(extents));
+            x -= extents[0];
+            y -= extents[2];
+            width += (int64_t)extents[0] + extents[1];
+            height += (int64_t)extents[2] + extents[3];
+        }
+        free(r);
+        pt_bounds(j, "bounds", x, y, width, height);
+    }
+    free(geometry);
+    free(position);
     if (!string_property(j, window, "_NET_WM_NAME", "title"))
         string_property(j, window, "WM_NAME", "title");
     r = property(window, XCB_ATOM_WM_CLASS, 8192);
@@ -154,6 +174,18 @@ static void destination(pt_json *j) {
         if (n > 0) {
             exe[n] = 0;
             pt_property(j, "executable", exe);
+        }
+        snprintf(proc, sizeof(proc), "/proc/%u/statm", pid);
+        FILE *statm = fopen(proc, "r");
+        if (statm) {
+            unsigned long long pages, resident;
+            long page_size = sysconf(_SC_PAGESIZE);
+            if (fscanf(statm, "%llu %llu", &pages, &resident) == 2 && page_size > 0 &&
+                resident <= INT64_MAX / (uint64_t)page_size) {
+                pt_put(j, ",\"memory_usage\":");
+                pt_number(j, resident * (uint64_t)page_size);
+            }
+            fclose(statm);
         }
     }
     free(r);

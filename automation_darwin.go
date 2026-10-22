@@ -6,6 +6,7 @@ package pastetrail
 #cgo LDFLAGS: -framework CoreServices
 #include <stddef.h>
 int pt_terminal_tty(int pid, int iterm, char *tty, size_t size);
+int pt_browser_url(int pid, int kind, char *url, size_t size);
 */
 import "C"
 
@@ -16,5 +17,11 @@ func nativeTerminalTTY(pid int, iterm bool) (string, int) {
 		kind = 1
 	}
 	status := C.pt_terminal_tty(C.int(pid), kind, &buffer[0], C.size_t(len(buffer)))
+	return C.GoString(&buffer[0]), int(status)
+}
+
+func nativeBrowserURL(pid, kind int) (string, int) {
+	var buffer [8192]C.char
+	status := C.pt_browser_url(C.int(pid), C.int(kind), &buffer[0], C.size_t(len(buffer)))
 	return C.GoString(&buffer[0]), int(status)
 }

@@ -72,6 +72,11 @@ func normalizeEvent(e *Event, limit int) {
 	fill(&a.PID, "process identity is unavailable")
 	fill(&a.WindowID, "window identity is unavailable")
 	fill(&a.WindowTitle, "window title is unavailable")
+	fill(&a.BundleID, "application bundle identifier is unavailable on this platform")
+	fill(&a.BundlePath, "application bundle path is unavailable on this platform")
+	fill(&a.Bounds, "window bounds are unavailable")
+	fill(&a.ContentBounds, "window content bounds are unavailable on this platform")
+	fill(&a.MemoryUsage, "process resident memory usage is unavailable")
 	if b := e.Destination.Browser; b != nil {
 		fill(&b.TabID, "browser does not expose a tab ID")
 		fill(&b.PID, "browser does not expose a tab renderer PID")

@@ -4,6 +4,7 @@
 #include <windows.h>
 #include "native.h"
 #include <shellapi.h>
+#include <psapi.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -44,6 +45,14 @@ static void window_context(pt_json *j) {
     char id[32];
     snprintf(id, sizeof(id), "%llu", (unsigned long long)(uintptr_t)window);
     pt_property(j, "window", id);
+    RECT bounds;
+    if (GetWindowRect(window, &bounds))
+        pt_bounds(j, "bounds", bounds.left, bounds.top, bounds.right - bounds.left,
+                  bounds.bottom - bounds.top);
+    POINT origin = {0, 0};
+    if (GetClientRect(window, &bounds) && ClientToScreen(window, &origin))
+        pt_bounds(j, "content_bounds", origin.x, origin.y, bounds.right - bounds.left,
+                  bounds.bottom - bounds.top);
     wchar_t title[4096];
     int chars = GetWindowTextW(window, title, 4096);
     if (chars > 0) {
@@ -65,6 +74,15 @@ static void window_context(pt_json *j) {
                 pt_property(j, "app", name ? name + 1 : value);
                 free(value);
             }
+        }
+        CloseHandle(process);
+    }
+    process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (process) {
+        PROCESS_MEMORY_COUNTERS info;
+        if (GetProcessMemoryInfo(process, &info, sizeof(info))) {
+            pt_put(j, ",\"memory_usage\":");
+            pt_number(j, info.WorkingSetSize);
         }
         CloseHandle(process);
     }

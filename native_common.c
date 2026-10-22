@@ -72,6 +72,20 @@ void pt_property(pt_json *j, const char *name, const char *value) {
     pt_string(j, value);
 }
 
+void pt_bounds(pt_json *j, const char *key, int64_t x, int64_t y, int64_t width, int64_t height) {
+    pt_put(j, ",");
+    pt_string(j, key);
+    pt_put(j, ":{\"x\":");
+    pt_number(j, x);
+    pt_put(j, ",\"y\":");
+    pt_number(j, y);
+    pt_put(j, ",\"width\":");
+    pt_number(j, width);
+    pt_put(j, ",\"height\":");
+    pt_number(j, height);
+    pt_put(j, "}");
+}
+
 void pt_format(pt_json *j, const char *type, const void *bytes, size_t size, int *first) {
     static const char alphabet[] =
         "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";

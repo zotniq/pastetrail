@@ -14,6 +14,40 @@ static pid_t query_fixture_focus(void) {
     return fixture_focus;
 }
 
+static NSDictionary *fixture_window(int pid, int number, int layer, double alpha, int width) {
+    return @{
+        (id)kCGWindowOwnerPID : @(pid),
+        (id)kCGWindowNumber : @(number),
+        (id)kCGWindowLayer : @(layer),
+        (id)kCGWindowAlpha : @(alpha),
+        (id)kCGWindowBounds : @{@"X" : @(-120), @"Y" : @0, @"Width" : @(width), @"Height" : @800}
+    };
+}
+
+static void check_window_metadata(void) {
+    NSArray *windows = @[
+        fixture_window(200, 1, 0, 1, 1000), fixture_window(100, 2, 0, 0, 1000),
+        fixture_window(100, 3, 5, 1, 1000), fixture_window(100, 4, 0, 1, 10),
+        fixture_window(100, 5, 0, 1, 1000), fixture_window(100, 6, 0, 1, 1000)
+    ];
+    pt_json j;
+    pt_json_init(&j);
+    pt_put(&j, "{\"fixture\":true");
+    window_metadata(&j, windows, 100);
+    pt_put(&j, "}");
+    char *json = pt_finish(&j);
+    assert(json && strstr(json, "\"window\":\"5\"") && strstr(json, "\"x\":-120") &&
+           strstr(json, "\"width\":1000"));
+    free(json);
+    pt_json_init(&j);
+    pt_put(&j, "{\"fixture\":true");
+    window_metadata(&j, windows, 999);
+    pt_put(&j, "}");
+    json = pt_finish(&j);
+    assert(json && !strstr(json, "\"window\""));
+    free(json);
+}
+
 static void check_pointer_bindings(void) {
     NSDictionary *bindings = @{
         @"Button,2,1,," : @{@"Action" : @"kPasteFromClipboardPointerAction"},
@@ -118,6 +152,7 @@ static void *check_destinations(void *unused) {
         assert(event_target(event, query_fixture_focus).pid == 0);
         CFRelease(event);
         check_pointer_bindings();
+        check_window_metadata();
     }
     return NULL;
 }
