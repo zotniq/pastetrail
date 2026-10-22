@@ -114,4 +114,14 @@ requiring Xvfb, xterm, xclip, xdotool, and xprop). macOS/Windows interactive cap
 still needs verification on permission-enabled desktops. Go's race detector is
 unavailable on Windows arm64; that job runs the regular suite.
 
+## Source layout
+
+The module root exposes the public API; implementations live under `internal/`:
+
+- `application/`, `browser/`, `terminal/`: destination attribution; terminal helpers include `tmux.go`, `ssh.go`, and `container.go`.
+- `capture/`: native snapshot decoding, event delivery, and destination enrichment.
+- `platform/macos/`, `platform/windows/`, `platform/linux/`: OS adapters; `platform/native/` shares C serialization and the queue.
+- `content/`, `model/`: clipboard formats, normalization, event types, and the source contract.
+- `cli/`: command handling. `cmd/pastetrail/` is the executable entry point.
+
 See [LICENSE](LICENSE).

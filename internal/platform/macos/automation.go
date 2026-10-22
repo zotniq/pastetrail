@@ -1,6 +1,6 @@
 //go:build darwin && cgo
 
-package platform
+package macos
 
 /*
 #cgo LDFLAGS: -framework CoreServices

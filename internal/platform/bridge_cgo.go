@@ -6,7 +6,7 @@ package platform
 #cgo darwin LDFLAGS: -framework AppKit -framework ApplicationServices
 #cgo linux LDFLAGS: -lxcb -lxcb-record
 #cgo windows LDFLAGS: -luser32 -lshell32 -lkernel32 -lpsapi
-#include "native.h"
+#include "native/native.h"
 #include <stdlib.h>
 */
 import "C"
@@ -16,6 +16,7 @@ import (
 	"unsafe"
 )
 
+// Bridge calls the C implementation linked by the selected OS adapter package.
 type Bridge struct{}
 
 func (Bridge) Probe() string { return C.GoString(C.pt_probe()) }

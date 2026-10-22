@@ -1,13 +1,16 @@
-package pastetrail
+package browser
 
 import (
 	"context"
 	"fmt"
 	"net/url"
+	"strings"
+
+	"github.com/zotniq/pastetrail/internal/model"
 )
 
 // These applications expose Chromium's active-tab URL or Safari's document URL.
-func browserKind(bundle string) int {
+func kindForBundle(bundle string) int {
 	switch bundle {
 	case "com.apple.Safari", "com.apple.SafariTechnologyPreview":
 		return 2
@@ -22,10 +25,10 @@ func browserKind(bundle string) int {
 	return 0
 }
 
-func enrichBrowser(ctx context.Context, e *Event, query func(int, int) (string, int)) {
+func Enrich(ctx context.Context, e *model.Event, query func(int, int) (string, int)) {
 	a := e.Destination.Application
 	b := e.Destination.Browser
-	kind := browserKind(a.BundleID.Value)
+	kind := kindForBundle(a.BundleID.Value)
 	if ctx.Err() != nil || b == nil || kind == 0 || a.PID.Value <= 0 {
 		return
 	}
@@ -33,7 +36,7 @@ func enrichBrowser(ctx context.Context, e *Event, query func(int, int) (string, 
 	if status == 0 {
 		u, err := url.Parse(value)
 		if err == nil && u.IsAbs() && ((u.Scheme != "http" && u.Scheme != "https") || u.Host != "") {
-			b.URL = Field[string]{Value: value, Evidence: Inferred, Reason: "active tab URL queried from the event target PID through macOS Automation after input"}
+			b.URL = model.Field[string]{Value: value, Evidence: model.Inferred, Reason: "active tab URL queried from the event target PID through macOS Automation after input"}
 			return
 		}
 	}
@@ -47,5 +50,30 @@ func enrichBrowser(ctx context.Context, e *Event, query func(int, int) (string, 
 	} else if status == 0 {
 		reason = "browser did not return an absolute URL"
 	}
-	b.URL = Missing[string](reason)
+	b.URL = model.Missing[string](reason)
+}
+
+func matchesName(s string) bool {
+	s = strings.ToLower(s)
+	for _, name := range []string{"chrome", "chromium", "firefox", "safari", "msedge", "microsoft edge", "brave", "vivaldi", "opera"} {
+		if strings.Contains(s, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// FromApplication creates browser context when the attributed application is recognized.
+func FromApplication(a model.Application, title, document string) *model.Browser {
+	if kindForBundle(a.BundleID.Value) == 0 && !matchesName(a.Name.Value+" "+a.Executable.Value) {
+		return nil
+	}
+	b := &model.Browser{}
+	if title != "" {
+		b.Title = model.Field[string]{Value: title, Evidence: model.Inferred, Reason: "window title of the attributed browser process"}
+	}
+	if strings.HasPrefix(document, "https://") || strings.HasPrefix(document, "http://") {
+		b.URL = model.Field[string]{Value: document, Evidence: model.Inferred, Reason: "focused window accessibility document URL"}
+	}
+	return b
 }

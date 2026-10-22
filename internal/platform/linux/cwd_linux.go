@@ -1,4 +1,4 @@
-package platform
+package linux
 
 import (
 	"fmt"

@@ -1,4 +1,4 @@
-package pastetrail
+package terminal
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zotniq/pastetrail/internal/model"
 	"github.com/zotniq/pastetrail/internal/platform"
 )
 
@@ -28,8 +29,8 @@ func inspector(ps []process) processInspector {
 		return paneInfo{session: "$1", window: "@2", pane: "%3", tty: "pts/2", command: "vim", cwd: "/work", pid: 60}, nil
 	}}
 }
-func terminalEvent() Event {
-	return Event{Destination: Destination{Application: Application{Name: Known("Terminal"), PID: Known(1)}}}
+func terminalEvent() model.Event {
+	return model.Event{Destination: model.Destination{Application: model.Application{Name: model.Known("Terminal"), PID: model.Known(1)}}}
 }
 
 func TestTerminalAttribution(t *testing.T) {
@@ -63,7 +64,7 @@ func TestTerminalAmbiguity(t *testing.T) {
 		e := terminalEvent()
 		enrichTerminal(context.Background(), &e, inspector(ps))
 		last := e.Destination.Contexts[len(e.Destination.Contexts)-1]
-		if last.Command.Evidence != Unavailable && last.Name.Evidence != Unavailable {
+		if last.Command.Evidence != model.Unavailable && last.Name.Evidence != model.Unavailable {
 			t.Fatal(e.Destination)
 		}
 	}
@@ -170,13 +171,13 @@ func TestSystemInspectorErrors(t *testing.T) {
 			t.Fatal(cwd)
 		}
 	}
-	e := Event{}
-	enrichDestination(ctx, &e)
+	e := model.Event{}
+	Enrich(ctx, &e)
 	if len(e.Destination.Contexts) != 0 {
 		t.Fatal(e)
 	}
 	e = terminalEvent()
-	enrichDestination(ctx, &e)
+	Enrich(ctx, &e)
 	if len(e.Destination.Contexts) == 0 {
 		t.Fatal("missing terminal limitation")
 	}

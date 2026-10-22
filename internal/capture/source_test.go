@@ -1,4 +1,4 @@
-package pastetrail
+package capture
 
 import (
 	"context"
@@ -11,6 +11,9 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/zotniq/pastetrail/internal/content"
+	"github.com/zotniq/pastetrail/internal/model"
 )
 
 type testBridge struct {
@@ -37,9 +40,8 @@ func (b *testBridge) Next() ([]byte, error) {
 	}
 }
 func sourceForTest(b *testBridge) *nativeSource {
-	o, _ := (Options{}).defaults()
-	s := newNativeSource(b, o)
-	s.enrich = func(context.Context, *Event) {}
+	s := newNativeSource(b, 1<<20)
+	s.enrich = func(context.Context, *model.Event) {}
 	return s
 }
 func snapshot(key string) []byte {
@@ -87,7 +89,7 @@ func TestDecodeSnapshot(t *testing.T) {
 		t.Fatal(e)
 	}
 	o, err = decodeSnapshot(snapshot("2"), 100)
-	if err != nil || o.Event.Content.Evidence != Unavailable || o.Event.Content.Reason == "" {
+	if err != nil || o.Event.Content.Evidence != model.Unavailable || o.Event.Content.Reason == "" {
 		t.Fatalf("%+v %v", o, err)
 	}
 	for _, b := range []string{"invalid", `{}`, `{"key":"a","time_ns":0}`} {
@@ -102,16 +104,13 @@ func TestDecodeSnapshot(t *testing.T) {
 			t.Fatalf("%+v %v", o, err)
 		}
 	}
-	if browserName("Terminal") {
-		t.Fatal("terminal identified as browser")
-	}
 }
 
 func TestNativePumpErrors(t *testing.T) {
 	boom := errors.New("failure")
 	for _, b := range []*testBridge{{openErr: boom}, {nextErr: boom}} {
 		s := sourceForTest(b)
-		if err := s.Run(context.Background(), func(Observation) error { return nil }); !errors.Is(err, boom) {
+		if err := s.Run(context.Background(), func(model.Observation) error { return nil }); !errors.Is(err, boom) {
 			t.Fatal(err)
 		}
 		if b.openErr == nil && !b.closed.Load() {
@@ -122,7 +121,7 @@ func TestNativePumpErrors(t *testing.T) {
 		b := &testBridge{data: make(chan []byte, 1)}
 		b.data <- data
 		s := sourceForTest(b)
-		err := s.Run(context.Background(), func(Observation) error { return boom })
+		err := s.Run(context.Background(), func(model.Observation) error { return boom })
 		if err == nil || (!strings.Contains(err.Error(), "decode") && !errors.Is(err, boom)) {
 			t.Fatal(err)
 		}
@@ -138,8 +137,8 @@ func TestNativePumpCancellationAndSingleton(t *testing.T) {
 	s := sourceForTest(b)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	err := s.Run(ctx, func(o Observation) error {
-		if err := s.Run(ctx, func(Observation) error { return nil }); !errors.Is(err, ErrRunning) {
+	err := s.Run(ctx, func(o model.Observation) error {
+		if err := s.Run(ctx, func(model.Observation) error { return nil }); !errors.Is(err, model.ErrRunning) {
 			t.Fatal(err)
 		}
 		cancel()
@@ -161,7 +160,7 @@ func TestNativeOverflow(t *testing.T) {
 			defer cancel()
 			gotGap := false
 			boom := errors.New("gap sink")
-			err := s.Run(ctx, func(o Observation) error {
+			err := s.Run(ctx, func(o model.Observation) error {
 				if o.Capabilities != nil {
 					gotGap = true
 					if reject {
@@ -198,7 +197,7 @@ func TestNativeReportedOverflow(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		reported := false
 		boom := errors.New("sink")
-		err := sourceForTest(b).Run(ctx, func(o Observation) error {
+		err := sourceForTest(b).Run(ctx, func(o model.Observation) error {
 			if o.Capabilities != nil {
 				reported = true
 				if fail {
@@ -220,11 +219,11 @@ func TestNativeStoppedCapabilities(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	b := &testBridge{}
-	if err := sourceForTest(b).Run(ctx, func(Observation) error { t.Fatal("unexpected emit"); return nil }); !errors.Is(err, context.Canceled) {
+	if err := sourceForTest(b).Run(ctx, func(model.Observation) error { t.Fatal("unexpected emit"); return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatal(err)
 	}
 	backendErr, sinkErr := errors.New("backend"), errors.New("sink")
-	err := sourceForTest(&testBridge{openErr: backendErr}).Run(context.Background(), func(o Observation) error {
+	err := sourceForTest(&testBridge{openErr: backendErr}).Run(context.Background(), func(o model.Observation) error {
 		if len(o.Capabilities) != 1 || o.Capabilities[0].Feature != "monitoring" || o.Capabilities[0].Status != "unavailable" {
 			t.Fatal(o)
 		}
@@ -253,25 +252,22 @@ func TestMacDestinationAttribution(t *testing.T) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
-			m, err := NewWithSource(sourceForTest(b), Options{})
-			if err != nil {
-				t.Fatal(err)
-			}
 			seen := 0
-			err = m.Run(ctx, func(r Record) error {
-				if r.Event == nil {
+			err := sourceForTest(b).Run(ctx, func(o model.Observation) error {
+				if o.Capabilities != nil {
 					return nil
 				}
-				e := r.Event
+				e := &o.Event
+				content.NormalizeEvent(e, 1<<20)
 				a := e.Destination.Application
 				if method == "unavailable" {
-					if a.PID.Evidence != Unavailable || a.Name.Value != "" || a.PID.Value != 0 || a.PID.Reason == "" || e.Destination.Browser != nil {
+					if a.PID.Evidence != model.Unavailable || a.Name.Value != "" || a.PID.Value != 0 || a.PID.Reason == "" || e.Destination.Browser != nil {
 						t.Fatalf("unavailable destination retained stale context: %+v", e.Destination)
 					}
 				} else {
-					want := Observed
+					want := model.Observed
 					if method == "accessibility_focus" {
-						want = Inferred
+						want = model.Inferred
 					}
 					if a.PID.Value != 100+seen || a.Name.Value != apps[seen] || a.PID.Evidence != want || a.Name.Evidence != want || a.PID.Reason == "" {
 						t.Fatalf("wrong recipient after app switch: %+v", a)
@@ -299,7 +295,7 @@ func TestMiddleClickSelectionMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := o.Event
-	if e.Trigger.Source != "iterm_selection" || e.Trigger.Button != 2 || e.Trigger.ClickCount != 1 || len(e.Trigger.Modifiers) != 1 || e.Trigger.Reason != "saved binding" || e.Content.Evidence != Unavailable || e.Content.Reason != "selection is private" || len(e.Content.Representations) != 0 {
+	if e.Trigger.Source != "iterm_selection" || e.Trigger.Button != 2 || e.Trigger.ClickCount != 1 || len(e.Trigger.Modifiers) != 1 || e.Trigger.Reason != "saved binding" || e.Content.Evidence != model.Unavailable || e.Content.Reason != "selection is private" || len(e.Content.Representations) != 0 {
 		t.Fatal(e)
 	}
 }

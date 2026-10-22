@@ -1,18 +1,19 @@
-package pastetrail
+package terminal
 
 import (
 	"context"
 	"fmt"
 	"strings"
 
+	"github.com/zotniq/pastetrail/internal/model"
 	"github.com/zotniq/pastetrail/internal/platform"
 )
 
-func activeTerminalTTY(ctx context.Context, app Application) (string, error) {
+func activeTerminalTTY(ctx context.Context, app model.Application) (string, error) {
 	return queryTerminalTTY(ctx, app, platform.TerminalTTY)
 }
 
-func queryTerminalTTY(ctx context.Context, app Application, query func(int, bool) (string, int)) (string, error) {
+func queryTerminalTTY(ctx context.Context, app model.Application, query func(int, bool) (string, int)) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}

@@ -3,7 +3,6 @@ package pastetrail
 import (
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 	"time"
 )
@@ -173,15 +172,5 @@ func TestPreservesCaptureTime(t *testing.T) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestUnavailableSource(t *testing.T) {
-	s := unavailableSource{reason: "test"}
-	if !reflect.DeepEqual(s.Capabilities(context.Background()), []Capability{{Feature: "monitoring", Status: "unavailable", Reason: "test"}}) {
-		t.Fatal("capabilities")
-	}
-	if !errors.Is(s.Run(context.Background(), nil), ErrUnsupported) {
-		t.Fatal("missing unsupported error")
 	}
 }

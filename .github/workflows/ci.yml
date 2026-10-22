@@ -90,10 +90,10 @@ jobs:
           esac
           sanitizer=()
           if [ "$GOOS" != windows ]; then sanitizer=(-fsanitize=address,undefined); fi
-          "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" internal/platform/common.c internal/platform/nativecheck/check.c -o bin/nativecheck
+          "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" internal/platform/native/common.c internal/platform/nativecheck/check.c -o bin/nativecheck
           bin/nativecheck
           if [ "$GOOS" = darwin ]; then
-            "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework ApplicationServices internal/platform/common.c internal/platform/macos/tests/capture.m -o bin/darwincheck
+            "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework ApplicationServices internal/platform/native/common.c internal/platform/macos/tests/capture.m -o bin/darwincheck
             bin/darwincheck
             "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework CoreServices internal/platform/macos/tests/automation.m -o bin/terminalcheck
             bin/terminalcheck

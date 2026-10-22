@@ -1,4 +1,4 @@
-package pastetrail
+package content
 
 import (
 	"encoding/base64"
@@ -6,20 +6,22 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/zotniq/pastetrail/internal/model"
 )
 
 func TestNormalize(t *testing.T) {
-	e := Event{Destination: Destination{Browser: &Browser{}, Contexts: []Context{{}}}}
-	normalizeEvent(&e, 10)
-	if e.Trigger.Kind != "unknown" || e.Trigger.Evidence != Inferred || e.Trigger.Automated.Evidence != Unavailable || e.Content.Evidence != Unavailable {
+	e := model.Event{Destination: model.Destination{Browser: &model.Browser{}, Contexts: []model.Context{{}}}}
+	NormalizeEvent(&e, 10)
+	if e.Trigger.Kind != "unknown" || e.Trigger.Evidence != model.Inferred || e.Trigger.Automated.Evidence != model.Unavailable || e.Content.Evidence != model.Unavailable {
 		t.Fatal(e)
 	}
-	if e.Destination.Application.PID.Evidence != Unavailable || e.Destination.Browser.PID.Evidence != Unavailable || e.Destination.Browser.URL.Evidence != Unavailable || e.Destination.Contexts[0].Host.Evidence != Unavailable {
+	if e.Destination.Application.PID.Evidence != model.Unavailable || e.Destination.Browser.PID.Evidence != model.Unavailable || e.Destination.Browser.URL.Evidence != model.Unavailable || e.Destination.Contexts[0].Host.Evidence != model.Unavailable {
 		t.Fatal(e.Destination)
 	}
-	f := Known(42)
+	f := model.Known(42)
 	fill(&f, "missing")
-	if f.Value != 42 || f.Evidence != Observed {
+	if f.Value != 42 || f.Evidence != model.Observed {
 		t.Fatal(f)
 	}
 }
@@ -27,18 +29,18 @@ func TestNormalize(t *testing.T) {
 func TestContentLimits(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
-		reps  []Representation
+		reps  []model.Representation
 		limit int
 		want  []string
 	}{
-		{"unicode", []Representation{{Data: "a😀b"}}, 4, []string{"a"}},
-		{"aggregate", []Representation{{Data: "abc"}, {Data: "def"}}, 5, []string{"abc", "de"}},
-		{"binary", []Representation{{Encoding: "base64", Data: base64.StdEncoding.EncodeToString([]byte{0, 1, 2, 3})}}, 2, []string{"AAE="}},
-		{"bad encoding", []Representation{{Encoding: "base64", Data: "!!!"}}, 5, []string{""}},
+		{"unicode", []model.Representation{{Data: "a😀b"}}, 4, []string{"a"}},
+		{"aggregate", []model.Representation{{Data: "abc"}, {Data: "def"}}, 5, []string{"abc", "de"}},
+		{"binary", []model.Representation{{Encoding: "base64", Data: base64.StdEncoding.EncodeToString([]byte{0, 1, 2, 3})}}, 2, []string{"AAE="}},
+		{"bad encoding", []model.Representation{{Encoding: "base64", Data: "!!!"}}, 5, []string{""}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			e := Event{Content: Content{Representations: tt.reps}}
-			normalizeEvent(&e, tt.limit)
+			e := model.Event{Content: model.Content{Representations: tt.reps}}
+			NormalizeEvent(&e, tt.limit)
 			if !e.Content.Incomplete {
 				t.Fatal("truncation was not reported")
 			}
@@ -83,16 +85,16 @@ func TestFileReferences(t *testing.T) {
 }
 
 func TestRepresentations(t *testing.T) {
-	r := textRepresentation("text/plain", []byte("hello"), 3)
+	r := TextRepresentation("text/plain", []byte("hello"), 3)
 	if r.Data != "hel" || r.Size != 5 || !r.Truncated || r.Encoding != "utf-8" {
 		t.Fatal(r)
 	}
-	r = textRepresentation("text/rtf", []byte{0xff}, 10)
+	r = TextRepresentation("text/rtf", []byte{0xff}, 10)
 	if r.Encoding != "base64" || r.Data != "/w==" {
 		t.Fatal(r)
 	}
 	for input, want := range map[string]string{"public.html": "text/html", "HTML Format": "application/x-windows-cf-html", "public.rtf": "text/rtf", "Rich Text Format": "text/rtf", "text/plain; charset=utf-8": "text/plain", "image/png": "", "not a format": ""} {
-		if got := richMediaType(input); got != want {
+		if got := RichMediaType(input); got != want {
 			t.Errorf("%s: %s", input, got)
 		}
 	}

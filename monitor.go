@@ -9,27 +9,24 @@ import (
 	"runtime"
 	"sync/atomic"
 	"time"
+
+	"github.com/zotniq/pastetrail/internal/capture"
+	"github.com/zotniq/pastetrail/internal/content"
+	"github.com/zotniq/pastetrail/internal/model"
 )
 
 var (
-	ErrRunning     = errors.New("pastetrail: monitor is already running")
-	ErrUnsupported = errors.New("pastetrail: monitoring is unavailable in this environment")
+	ErrRunning     = model.ErrRunning
+	ErrUnsupported = model.ErrUnsupported
 )
 
-// Observation associates a native attempt with a snapshot. Key is a native event
-// identity, not a content hash; different pastes must have different keys.
-type Observation struct {
-	Key          string
-	Event        Event
-	Capabilities []Capability
-}
+// Observation associates a native attempt with a snapshot. Key identifies the
+// attempt, not its content; different pastes must have different keys.
+type Observation = model.Observation
 
 // Source supplies observations serially until cancellation or error. emit may
 // block; native implementations must buffer independently and report overflows.
-type Source interface {
-	Capabilities(context.Context) []Capability
-	Run(context.Context, func(Observation) error) error
-}
+type Source = model.Source
 
 // Options controls payload size and duplicate tracking.
 type Options struct {
@@ -72,7 +69,7 @@ func New(options Options) (*Monitor, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewWithSource(newPlatformSource(o), o)
+	return NewWithSource(capture.New(o.MaxContentBytes), o)
 }
 
 // NewWithSource supports embedding an application-provided observation source.
@@ -162,7 +159,7 @@ func (m *Monitor) Run(ctx context.Context, sink func(Record) error) error {
 		e.Time = e.Time.UTC()
 		e.CapturedAt = e.CapturedAt.UTC()
 		e.OS = runtime.GOOS
-		normalizeEvent(&e, m.options.MaxContentBytes)
+		content.NormalizeEvent(&e, m.options.MaxContentBytes)
 		return sink(Record{SchemaVersion: 1, Type: "paste_attempt", Time: e.Time, Event: &e})
 	})
 }

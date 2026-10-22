@@ -1,149 +1,60 @@
 // Package pastetrail observes paste attempts and reports their available context.
 package pastetrail
 
-import "time"
+import "github.com/zotniq/pastetrail/internal/model"
 
 // Evidence distinguishes a direct observation from a guess or missing data.
-type Evidence string
-
-const (
-	Observed    Evidence = "observed"
-	Inferred    Evidence = "inferred"
-	Unavailable Evidence = "unavailable"
-)
+type Evidence = model.Evidence
 
 // Field carries the provenance of one destination attribute.
-type Field[T any] struct {
-	Value    T        `json:"value,omitempty"`
-	Evidence Evidence `json:"evidence"`
-	Reason   string   `json:"reason,omitempty"`
-}
-
-// Known constructs an observed field.
-func Known[T any](value T) Field[T] { return Field[T]{Value: value, Evidence: Observed} }
-
-// Missing constructs an explicitly unavailable field.
-func Missing[T any](reason string) Field[T] { return Field[T]{Evidence: Unavailable, Reason: reason} }
+type Field[T any] = model.Field[T]
 
 // Trigger describes the action suggesting a paste. Shortcuts imply intent, not insertion.
-type Trigger struct {
-	Kind       string      `json:"kind"`
-	Action     string      `json:"action,omitempty"`
-	Evidence   Evidence    `json:"evidence"`
-	Automated  Field[bool] `json:"automated"`
-	Source     string      `json:"source"`
-	Reason     string      `json:"reason,omitempty"`
-	Button     int         `json:"button,omitempty"`
-	ClickCount int         `json:"click_count,omitempty"`
-	Modifiers  []string    `json:"modifiers,omitempty"`
-}
+type Trigger = model.Trigger
 
 // Representation preserves a text or rich-text clipboard format. Binary formats
 // use base64 encoding. File contents are never represented here.
-type Representation struct {
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
-	Encoding  string `json:"encoding"`
-	Size      int    `json:"size"`
-	Truncated bool   `json:"truncated,omitempty"`
-}
+type Representation = model.Representation
 
 // File describes a clipboard file reference without reading its contents.
-type File struct {
-	Name          string     `json:"name"`
-	Path          string     `json:"path,omitempty"`
-	URI           string     `json:"uri,omitempty"`
-	Size          *int64     `json:"size,omitempty"`
-	Directory     *bool      `json:"directory,omitempty"`
-	Modified      *time.Time `json:"modified,omitempty"`
-	MetadataError string     `json:"metadata_error,omitempty"`
-}
+type File = model.File
 
 // Content is a snapshot of the available clipboard representations at capture time.
-type Content struct {
-	Representations []Representation `json:"representations,omitempty"`
-	Files           []File           `json:"files,omitempty"`
-	Evidence        Evidence         `json:"evidence"`
-	Reason          string           `json:"reason,omitempty"`
-	Incomplete      bool             `json:"incomplete,omitempty"`
-}
+type Content = model.Content
 
 // Application identifies the foreground destination.
-type Application struct {
-	Name          Field[string]        `json:"name"`
-	Executable    Field[string]        `json:"executable"`
-	PID           Field[int]           `json:"pid"`
-	WindowID      Field[string]        `json:"window_id"`
-	WindowTitle   Field[string]        `json:"window_title"`
-	BundleID      Field[string]        `json:"bundle_id"`
-	BundlePath    Field[string]        `json:"bundle_path"`
-	Bounds        Field[*WindowBounds] `json:"bounds"`
-	ContentBounds Field[*WindowBounds] `json:"content_bounds"`
-	MemoryUsage   Field[uint64]        `json:"memory_usage"` // Resident bytes of the owner process.
-}
+type Application = model.Application
 
 // WindowBounds uses the OS's desktop coordinates, subject to its display scaling.
-type WindowBounds struct {
-	X      int64 `json:"x"`
-	Y      int64 `json:"y"`
-	Width  int64 `json:"width"`
-	Height int64 `json:"height"`
-}
+type WindowBounds = model.WindowBounds
 
 // Browser describes a tab independently of the browser process ID.
-type Browser struct {
-	TabID Field[string] `json:"tab_id"`
-	PID   Field[int]    `json:"pid"` // Renderer process, distinct from Application.PID.
-	Title Field[string] `json:"title"`
-	URL   Field[string] `json:"url"`
-	Frame Field[string] `json:"frame"`
-}
+type Browser = model.Browser
 
 // Context is one identifiable layer of a terminal, tmux, SSH, or container session.
 // PID always belongs to the specified Host and, if present, Container.
-type Context struct {
-	Kind             string        `json:"kind"`
-	Name             Field[string] `json:"name"`
-	PID              Field[int]    `json:"pid"`
-	Host             Field[string] `json:"host"`
-	TTY              Field[string] `json:"tty"`
-	Command          Field[string] `json:"command"`
-	WorkingDirectory Field[string] `json:"working_directory"`
-	Session          Field[string] `json:"session"`
-	Pane             Field[string] `json:"pane"`
-	Container        Field[string] `json:"container"`
-}
+type Context = model.Context
 
 // Destination contains the foreground application and any identifiable nested context.
-type Destination struct {
-	Application Application `json:"application"`
-	Browser     *Browser    `json:"browser,omitempty"`
-	Contexts    []Context   `json:"contexts,omitempty"`
-}
+type Destination = model.Destination
 
 // Event describes an attempt. It never asserts that content was inserted.
-type Event struct {
-	ID          string      `json:"id"`
-	Time        time.Time   `json:"time"`
-	CapturedAt  time.Time   `json:"captured_at"`
-	OS          string      `json:"os"`
-	Trigger     Trigger     `json:"trigger"`
-	Content     Content     `json:"content"`
-	Destination Destination `json:"destination"`
-}
+type Event = model.Event
 
 // Capability reports an observable feature or a detection gap.
-type Capability struct {
-	Feature string `json:"feature"`
-	Status  string `json:"status"` // supported, partial, unavailable, permission_required
-	Reason  string `json:"reason,omitempty"`
-}
+type Capability = model.Capability
 
 // Record is a versioned JSONL envelope. Exactly one of Event or Capabilities is set.
-type Record struct {
-	SchemaVersion int          `json:"schema_version"`
-	Type          string       `json:"type"`
-	Time          time.Time    `json:"time"`
-	Event         *Event       `json:"event,omitempty"`
-	Capabilities  []Capability `json:"capabilities,omitempty"`
-}
+type Record = model.Record
+
+const (
+	Observed    = model.Observed
+	Inferred    = model.Inferred
+	Unavailable = model.Unavailable
+)
+
+// Known constructs an observed field.
+func Known[T any](value T) Field[T] { return model.Known(value) }
+
+// Missing constructs an explicitly unavailable field.
+func Missing[T any](reason string) Field[T] { return model.Missing[T](reason) }
