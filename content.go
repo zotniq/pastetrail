@@ -74,6 +74,7 @@ func normalizeEvent(e *Event, limit int) {
 	fill(&a.WindowTitle, "window title is unavailable")
 	if b := e.Destination.Browser; b != nil {
 		fill(&b.TabID, "browser does not expose a tab ID")
+		fill(&b.PID, "browser does not expose a tab renderer PID")
 		fill(&b.Title, "tab title is unavailable")
 		fill(&b.URL, "browser URL is unavailable without application integration")
 		fill(&b.Frame, "frame is unavailable without application integration")
@@ -117,17 +118,25 @@ func fileLocation(value string, windows bool) (File, bool) {
 		f.Path = value
 		slash := strings.ReplaceAll(value, `\`, "/")
 		f.Name = path.Base(slash)
-		f.URI = "file:" + slash
+		host, location, _ := strings.Cut(strings.TrimPrefix(slash, "//"), "/")
+		if host != "?" && host != "." {
+			f.URI = (&url.URL{Scheme: "file", Host: host, Path: "/" + location}).String()
+		}
 		f.MetadataError = "metadata unavailable for network or device path"
 		return f, false
 	}
-	u, err := url.Parse(value)
+	u := &url.URL{}
+	var err error
+	colon := strings.IndexByte(value, ':')
+	if colon > 0 && !strings.ContainsAny(value[:colon], `/\`) && !(windows && colon == 1) {
+		u, err = url.Parse(value)
+	}
 	if err != nil {
 		f.URI = value
 		f.MetadataError = err.Error()
 		return f, false
 	}
-	if u.Scheme != "" && !(len(u.Scheme) == 1 && len(value) > 2 && value[1] == ':') {
+	if u.Scheme != "" {
 		f.URI = value
 		f.Name = path.Base(u.Path)
 		if u.Scheme != "file" || (u.Host != "" && u.Host != "localhost") {

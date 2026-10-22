@@ -14,7 +14,7 @@ func TestNormalize(t *testing.T) {
 	if e.Trigger.Kind != "unknown" || e.Trigger.Evidence != Inferred || e.Trigger.Automated.Evidence != Unavailable || e.Content.Evidence != Unavailable {
 		t.Fatal(e)
 	}
-	if e.Destination.Application.PID.Evidence != Unavailable || e.Destination.Browser.URL.Evidence != Unavailable || e.Destination.Contexts[0].Host.Evidence != Unavailable {
+	if e.Destination.Application.PID.Evidence != Unavailable || e.Destination.Browser.PID.Evidence != Unavailable || e.Destination.Browser.URL.Evidence != Unavailable || e.Destination.Contexts[0].Host.Evidence != Unavailable {
 		t.Fatal(e.Destination)
 	}
 	f := Known(42)
@@ -110,5 +110,23 @@ func TestWindowsFileLocations(t *testing.T) {
 		if local || f.MetadataError == "" || f.Name != "report.txt" {
 			t.Fatalf("%q: %+v", value, f)
 		}
+	}
+	f, local := fileLocation(`\\server\share\100% report.txt`, true)
+	if local || f.URI != "file://server/share/100%25%20report.txt" {
+		t.Fatal(f)
+	}
+}
+
+func TestLiteralFilePathCharacters(t *testing.T) {
+	name := filepath.Join(t.TempDir(), "100% #report.txt")
+	if err := os.WriteFile(name, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	f := FileReference(name)
+	if f.MetadataError != "" || f.Name != "100% #report.txt" || f.Path != name || !strings.Contains(f.URI, "100%25%20%23report.txt") {
+		t.Fatal(f)
+	}
+	if roundtrip := FileReference(f.URI); roundtrip.Path != name || roundtrip.MetadataError != "" {
+		t.Fatal(roundtrip)
 	}
 }

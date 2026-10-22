@@ -76,6 +76,7 @@ type Application struct {
 // Browser describes a tab independently of the browser process ID.
 type Browser struct {
 	TabID Field[string] `json:"tab_id"`
+	PID   Field[int]    `json:"pid"` // Renderer process, distinct from Application.PID.
 	Title Field[string] `json:"title"`
 	URL   Field[string] `json:"url"`
 	Frame Field[string] `json:"frame"`
