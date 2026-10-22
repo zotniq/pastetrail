@@ -91,9 +91,24 @@ func TestRepresentations(t *testing.T) {
 	if r.Encoding != "base64" || r.Data != "/w==" {
 		t.Fatal(r)
 	}
-	for input, want := range map[string]string{"public.html": "text/html", "HTML Format": "text/html", "public.rtf": "text/rtf", "Rich Text Format": "text/rtf", "text/plain; charset=utf-8": "text/plain", "image/png": "", "not a format": ""} {
+	for input, want := range map[string]string{"public.html": "text/html", "HTML Format": "application/x-windows-cf-html", "public.rtf": "text/rtf", "Rich Text Format": "text/rtf", "text/plain; charset=utf-8": "text/plain", "image/png": "", "not a format": ""} {
 		if got := richMediaType(input); got != want {
 			t.Errorf("%s: %s", input, got)
+		}
+	}
+}
+
+func TestWindowsFileLocations(t *testing.T) {
+	for _, value := range []string{`C:\Users\test\report with spaces.txt`, "file:///C:/Users/test/report%20with%20spaces.txt", "file://localhost/C:/Users/test/report%20with%20spaces.txt"} {
+		f, local := fileLocation(value, true)
+		if !local || f.Path != `C:\Users\test\report with spaces.txt` || f.Name != "report with spaces.txt" || !strings.Contains(f.URI, "/C:/Users/test/report%20with%20spaces.txt") {
+			t.Fatalf("%q: %+v", value, f)
+		}
+	}
+	for _, value := range []string{`\\server\share\report.txt`, "//server/share/report.txt", `\\?\C:\report.txt`} {
+		f, local := fileLocation(value, true)
+		if local || f.MetadataError == "" || f.Name != "report.txt" {
+			t.Fatalf("%q: %+v", value, f)
 		}
 	}
 }

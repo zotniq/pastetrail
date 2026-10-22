@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"unicode/utf8"
 )
@@ -94,26 +95,10 @@ func normalizeEvent(e *Event, limit int) {
 // FileReference inspects metadata with Lstat; it never opens a file's contents.
 // Non-local URIs are preserved without accessing their hosts.
 func FileReference(value string) File {
-	f := File{}
-	u, err := url.Parse(value)
-	if err != nil {
-		f.URI = value
-		f.MetadataError = err.Error()
+	f, local := fileLocation(value, runtime.GOOS == "windows")
+	if !local {
 		return f
 	}
-	if u.Scheme != "" && !(len(u.Scheme) == 1 && len(value) > 2 && value[1] == ':') {
-		f.URI = value
-		f.Name = path.Base(u.Path)
-		if u.Scheme != "file" || (u.Host != "" && u.Host != "localhost") {
-			f.MetadataError = "metadata unavailable for non-local URI"
-			return f
-		}
-		f.Path = filepath.FromSlash(u.Path)
-	} else {
-		f.Path = value
-		f.URI = (&url.URL{Scheme: "file", Path: filepath.ToSlash(value)}).String()
-	}
-	f.Name = filepath.Base(f.Path)
 	info, err := os.Lstat(f.Path)
 	if err != nil {
 		f.MetadataError = err.Error()
@@ -124,6 +109,53 @@ func FileReference(value string) File {
 	f.Directory = &dir
 	f.Modified = &modified
 	return f
+}
+
+func fileLocation(value string, windows bool) (File, bool) {
+	f := File{}
+	if windows && (strings.HasPrefix(value, `\\`) || strings.HasPrefix(value, "//")) {
+		f.Path = value
+		slash := strings.ReplaceAll(value, `\`, "/")
+		f.Name = path.Base(slash)
+		f.URI = "file:" + slash
+		f.MetadataError = "metadata unavailable for network or device path"
+		return f, false
+	}
+	u, err := url.Parse(value)
+	if err != nil {
+		f.URI = value
+		f.MetadataError = err.Error()
+		return f, false
+	}
+	if u.Scheme != "" && !(len(u.Scheme) == 1 && len(value) > 2 && value[1] == ':') {
+		f.URI = value
+		f.Name = path.Base(u.Path)
+		if u.Scheme != "file" || (u.Host != "" && u.Host != "localhost") {
+			f.MetadataError = "metadata unavailable for non-local URI"
+			return f, false
+		}
+		f.Path = u.Path
+		if windows && len(f.Path) >= 3 && f.Path[0] == '/' && f.Path[2] == ':' {
+			f.Path = f.Path[1:]
+		}
+	} else {
+		f.Path = value
+		slash := value
+		if windows {
+			slash = strings.ReplaceAll(value, `\`, "/")
+			if len(slash) >= 3 && slash[1] == ':' && slash[2] == '/' {
+				slash = "/" + slash
+			}
+		}
+		f.URI = (&url.URL{Scheme: "file", Path: slash}).String()
+	}
+	if windows {
+		f.Name = path.Base(strings.ReplaceAll(f.Path, `\`, "/"))
+		f.Path = strings.ReplaceAll(f.Path, "/", `\`)
+	} else {
+		f.Name = filepath.Base(f.Path)
+	}
+	return f, true
 }
 
 func textRepresentation(media string, data []byte, limit int) Representation {
@@ -143,8 +175,10 @@ func textRepresentation(media string, data []byte, limit int) Representation {
 
 func richMediaType(format string) string {
 	switch strings.ToLower(format) {
-	case "public.html", "html format", "text/html":
+	case "public.html", "text/html":
 		return "text/html"
+	case "html format", "application/x-windows-cf-html":
+		return "application/x-windows-cf-html"
 	case "public.rtf", "rich text format", "text/rtf", "application/rtf":
 		return "text/rtf"
 	default:

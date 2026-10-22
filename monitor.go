@@ -42,6 +42,9 @@ func (o Options) defaults() (Options, error) {
 	if o.MaxContentBytes < 0 || o.DedupWindow < 0 || o.MaxDedupEntries < 0 {
 		return o, errors.New("pastetrail: options cannot be negative")
 	}
+	if o.MaxContentBytes > 64<<20 {
+		return o, errors.New("pastetrail: maximum content size is 64 MiB")
+	}
 	if o.MaxContentBytes == 0 {
 		o.MaxContentBytes = 1 << 20
 	}

@@ -6,9 +6,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/zotniq/pastetrail"
 	"io"
 	"os"
+
+	"github.com/zotniq/pastetrail"
 )
 
 // Monitor is the subset used by the command, permitting isolated CLI tests.

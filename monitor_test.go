@@ -18,7 +18,7 @@ func (s fakeSource) Capabilities(context.Context) []Capability {
 func (s fakeSource) Run(c context.Context, f func(Observation) error) error { return s.run(c, f) }
 
 func TestOptions(t *testing.T) {
-	for _, o := range []Options{{MaxContentBytes: -1}, {DedupWindow: -1}, {MaxDedupEntries: -1}} {
+	for _, o := range []Options{{MaxContentBytes: -1}, {MaxContentBytes: 65 << 20}, {DedupWindow: -1}, {MaxDedupEntries: -1}} {
 		if _, err := New(o); err == nil {
 			t.Fatal("negative options accepted")
 		}
