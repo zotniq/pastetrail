@@ -1,0 +1,116 @@
+name: build-and-test
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-24.04, os: linux, arch: amd64, cc: gcc, shell: bash, race: '-race'}
+          - {runner: ubuntu-24.04-arm, os: linux, arch: arm64, cc: gcc, shell: bash, race: '-race'}
+          - {runner: macos-15-intel, os: darwin, arch: amd64, cc: clang, shell: bash, race: '-race'}
+          - {runner: macos-15, os: darwin, arch: arm64, cc: clang, shell: bash, race: '-race'}
+          - runner: windows-2025
+            os: windows
+            arch: amd64
+            cc: gcc
+            shell: 'msys2 {0}'
+            msystem: UCRT64
+            compiler: mingw-w64-ucrt-x86_64-gcc
+            race: '-race'
+          - runner: windows-11-arm
+            os: windows
+            arch: arm64
+            cc: clang
+            shell: 'msys2 {0}'
+            msystem: CLANGARM64
+            compiler: mingw-w64-clang-aarch64-clang
+            # Go does not support -race on windows/arm64.
+            race: ''
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    env:
+      CGO_ENABLED: '1'
+      GOOS: ${{ matrix.os }}
+      GOARCH: ${{ matrix.arch }}
+      CC: ${{ matrix.cc }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+          architecture: ${{ matrix.arch == 'amd64' && 'x64' || 'arm64' }}
+      - if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          path-type: inherit
+          update: true
+          install: ${{ matrix.compiler }}
+      - if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb1-dev libxcb-record0-dev xvfb xterm xclip xdotool x11-utils
+      - name: Check formatting and Go diagnostics
+        run: |
+          test -z "$(gofmt -l .)"
+          go vet ./...
+      - name: Test and enforce coverage
+        env:
+          RACE_FLAG: ${{ matrix.race }}
+        run: |
+          tags=()
+          if [ "$GOOS" = linux ]; then tags=(-tags=integration); fi
+          go test $RACE_FLAG "${tags[@]}" -coverprofile=coverage.out ./...
+          python scripts/coverage.py coverage.out
+          go tool cover -html=coverage.out -o coverage.html
+          python -m unittest discover -s scripts -p 'test_*.py'
+      - name: Check native serialization and memory handling
+        run: |
+          mkdir -p bin
+          case "$GOOS" in
+            darwin) "$CC" -Wall -Wextra -Werror -fsyntax-only native_darwin.m ;;
+            linux) "$CC" -Wall -Wextra -Werror -c native_linux.c -o bin/platform-check.o ;;
+            windows) "$CC" -Wall -Wextra -Werror -c native_windows.c -o bin/platform-check.o ;;
+          esac
+          sanitizer=()
+          if [ "$GOOS" != windows ]; then sanitizer=(-fsanitize=address,undefined); fi
+          "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" native_common.c internal/nativecheck/check.c -o bin/nativecheck
+          bin/nativecheck
+      - name: Package native binary
+        run: |
+          python scripts/package.py
+          executable=dist/pastetrail_*/pastetrail
+          if [ "$GOOS" = windows ]; then executable=dist/pastetrail_*/pastetrail.exe; fi
+          $executable version
+          $executable doctor
+      - uses: actions/upload-artifact@v7
+        with:
+          name: pastetrail-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: coverage-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            coverage.out
+            coverage.html
