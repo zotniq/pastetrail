@@ -120,3 +120,48 @@ jobs:
           path: |
             coverage.out
             coverage.html
+          if-no-files-found: error
+
+  coverage:
+    name: Publish Go coverage
+    needs: native
+    if: github.repository == 'zotniq/pastetrail' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: coverage-*
+          path: coverage-reports
+          # Each target has the same filenames; preserve their directories.
+          merge-multiple: false
+      - name: Select native Go coverage reports
+        id: reports
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          profiles = sorted(Path("coverage-reports").glob("coverage-*/coverage.out"))
+          if len(profiles) != 6:
+              raise SystemExit(f"Expected six native coverage profiles, found {len(profiles)}")
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              print("files=" + ",".join(str(path) for path in profiles), file=output)
+          PY
+      - name: Upload Go coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          use_oidc: true
+          files: ${{ steps.reports.outputs.files }}
+          disable_search: true
+          disable_telem: true
+          plugins: noop
+          flags: go
+          name: native-platforms
+          fail_ci_if_error: true
