@@ -68,7 +68,11 @@ jobs:
           sudo apt-get install -y libxcb1-dev libxcb-record0-dev xvfb xterm xclip xdotool x11-utils
       - name: Check formatting and Go diagnostics
         run: |
-          test -z "$(gofmt -l .)"
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            printf 'Go files need formatting:\n%s\n' "$unformatted"
+            exit 1
+          fi
           go vet ./...
       - name: Test and enforce coverage
         env:
@@ -114,7 +118,7 @@ jobs:
             dist/*.sha256
           if-no-files-found: error
       - uses: actions/upload-artifact@v7
-        if: always()
+        if: always() && hashFiles('coverage.out') != ''
         with:
           name: coverage-${{ matrix.os }}-${{ matrix.arch }}
           path: |
