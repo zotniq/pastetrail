@@ -1,7 +1,6 @@
 # PasteTrail
 
 [![Build and tests](https://github.com/zotniq/pastetrail/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/zotniq/pastetrail/actions/workflows/ci.yml?query=branch%3Amain)
-[![Go coverage](https://codecov.io/gh/zotniq/pastetrail/branch/main/graph/badge.svg)](https://codecov.io/gh/zotniq/pastetrail)
 [![Go 1.26+](https://img.shields.io/badge/Go-1.26%2B-00ADD8?logo=go)](go.mod)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
@@ -244,12 +243,6 @@ including the CLI. Go coverage excludes C/Objective-C and does not establish nat
 capture correctness. CI separately checks native serialization/queue handling,
 macOS attribution/Automation fixtures, and Linux Xvfb integration. Interactive
 macOS/Windows behavior still needs checks on permission-enabled desktops.
-
-The Codecov badge combines Go reports from all six native targets after successful
-CI runs on `main`. Its percentage can differ from a single platform's Go statement
-coverage. To enable reporting, activate `zotniq/pastetrail` in
-[Codecov](https://app.codecov.io/gh/zotniq/pastetrail). CI authenticates with GitHub
-OIDC; no `CODECOV_TOKEN` secret is needed. The badge populates after the first upload.
 
 For Linux integration, install Xvfb, xterm, xclip, xdotool, and xprop, then run
 `go test -tags=integration ./...`. Packaging builds the current OS/architecture under
