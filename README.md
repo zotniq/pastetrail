@@ -1,127 +1,272 @@
 # PasteTrail
 
-Go library and standalone CLI for observing paste attempts and their destination.
-Apache-2.0. No Go module dependencies. Native capture uses small C/Objective-C adapters.
+A Go library and standalone CLI that observes paste attempts, snapshots available
+clipboard content, and reports the destination application, browser, or terminal context.
 
-## Use
+**Status: early development.** Detection varies by OS and application. PasteTrail
+cannot observe every paste attempt or confirm that content was inserted.
 
-```sh
-pastetrail doctor
-pastetrail daemon --log pastetrail.jsonl
-```
+## Features
 
-`daemon` runs in the foreground until interrupted, suitable for an interactive
-user's service manager. It writes JSON Lines: startup/capability changes and
-paste-attempt records. Each field distinguishes observed, inferred, and unavailable
-data. A shortcut is evidence of an attempt, not proof that an application pasted.
+- Plain text, HTML, and RTF snapshots, with media type, encoding, size, and truncation metadata.
+- File names, paths/URIs, and available size, directory, and modification-time metadata. File contents are never read.
+- Trigger kind, shortcut/action, clipboard source, and evidence. iTerm2 mouse attempts also include button, click count, and modifiers; Windows injected shortcuts can be identified.
+- Application name, executable, PID, window ID/title, bounds, and resident memory where exposed; macOS bundle ID/path and Windows content bounds.
+- Versioned JSON Lines records with event IDs and timestamps, startup capabilities, and reports of truncation, queue overflow, or capture failure.
+- An embeddable Go API with cancellation, serial callbacks, custom observation sources, bounded buffering, and duplicate-event tracking.
 
-Text and rich text have a total default limit of 1 MiB per event; change it with
-`--max-content-bytes` (maximum 64 MiB). File references include names, paths/URIs,
-and metadata, never file contents. Windows CF_HTML retains its native header as
-`application/x-windows-cf-html`. Truncation, queue overflow, and capture failures
-are reported. Logs contain the captured clipboard text.
+### Platform support
 
-```go
-monitor, err := pastetrail.New(pastetrail.Options{})
-if err != nil { return err }
-encoder := json.NewEncoder(output)
-return monitor.Run(ctx, func(record pastetrail.Record) error {
-    return encoder.Encode(record)
-})
-```
-
-Import `github.com/zotniq/pastetrail`. Callbacks run serially; return an error or
-cancel the context to stop. One native monitor can run per process.
-`NewWithSource` accepts application-provided observations for additional triggers.
-
-## Detection limits
-
-A standalone daemon cannot guarantee every paste attempt across all applications.
-`doctor` reports build/session capabilities without requesting permissions.
+Native build targets are macOS (`darwin`), Windows, and Linux, each on `amd64` and
+`arm64`. Entries describe implemented collection paths; permissions, application
+behavior, and ambiguous focus can leave individual fields unavailable.
 
 | Feature | macOS | Windows | Linux X11 |
 | --- | --- | --- | --- |
-| Shortcut attempts | Cmd+V variants | Ctrl+V, Ctrl+Shift+V, Shift+Insert | Ctrl+V, Ctrl+Shift+V, Shift+Insert |
-| Middle-click | iTerm2 saved clipboard/selection bindings; inferred | Unavailable | PRIMARY selection; recipient unavailable |
-| Text, HTML, RTF, file references | Available formats | Available formats | Available formats; incremental transfers unavailable |
-| Application/PID/window | Event target PID; available app/window attributes | Available OS attributes | Available window properties; local PID only |
-| Browser | Window title; active URL through Automation in Safari/Chromium browsers; Accessibility fallback | Window title | Window title |
-| Terminal command, PID, cwd | iTerm2/Terminal active TTY; unambiguous local foreground process | Unavailable | Unambiguous local TTY |
-| tmux | Active pane on default server socket | Unavailable | Active pane on default server socket |
+| Keyboard attempts | Cmd+V, with Shift/Option variants | Ctrl+V, Ctrl+Shift+V, Shift+Insert | Ctrl+V, Ctrl+Shift+V, Shift+Insert |
+| Middle-click attempts | iTerm2 saved clipboard/selection bindings | Unavailable | PRIMARY selection; recipient unavailable |
+| Text, HTML, RTF, file references | Available clipboard formats | Available clipboard formats | Available selection formats; no incremental transfers |
+| Application/window attribution | Event target PID; Accessibility focus fallback | Foreground application/window | Available window properties; local PID only |
+| Browser context | Window title; active URL via Automation or Accessibility document fallback | Window title | Window title |
+| Terminal command, PID, cwd | iTerm2/Terminal active TTY; unambiguous local foreground process | Unavailable | Unambiguous local TTY/foreground process |
+| tmux context | Active pane on default server socket | Unavailable | Active pane on default server socket |
+| SSH context | Local command and destination | Unavailable | Local command and destination |
+| Container context | Container argument of a recognized local Docker/Podman exec command | Unavailable | Container argument of a recognized local Docker/Podman exec command |
 
-Browser tab IDs, renderer PIDs and frames, menu/context-menu actions, app-internal/programmatic
-pastes, and native Wayland capture are unavailable. Synthetic recognized shortcuts
-may be captured, but their origin is not always identifiable. Clipboard and process
-snapshots can race focus/content changes; custom key bindings and secure sessions
-can be missed. Multiple terminal tabs or foreground processes may prevent attribution;
-tmux synchronized panes are not mapped to all recipients.
-SSH and container contexts identify recognizable **local** commands and destinations;
-remote/container interior commands, PIDs, and working directories remain unavailable.
+macOS browser Automation supports Safari and Chromium families, including Chrome,
+Edge, Brave, Vivaldi, Opera, and Arc. The [browser implementation](internal/browser/browser.go)
+lists recognized bundle IDs. Firefox has no active-tab Automation integration.
 
-On macOS, middle-click detection matches iTerm2's saved Pointer bindings, including
-modifiers and click counts. Runtime mouse reporting can override those bindings.
-Selection pastes report `source: "iterm_selection"` with unavailable content: iTerm2's
-most recent selection is private and may differ from the clipboard. Resolving the
-clicked pane or retrieving that selection requires application integration. Custom
-preferences folders, trackpad-only gestures, and other apps' mouse bindings are not supported.
+## Installation
 
-macOS requires Input Monitoring. It resolves the keyboard event's target PID;
-if absent, a fresh Accessibility focus query supplies an inferred destination.
-If neither is available, the destination remains unavailable. Accessibility also
-enables additional window/URL fields. No AppKit main run loop is required by the host.
-Active iTerm2/Terminal sessions are queried through read-only Apple Events and may
-require Automation access. To authorize iTerm2 from the terminal running the daemon:
-`osascript -e 'tell application "iTerm2" to get tty of current session of current window'`.
-For Terminal.app, use `osascript -e 'tell application "Terminal" to get tty of selected tab of front window'`.
-The daemon reports denied access without requesting permission from its input callback.
-Browser URLs use the same application scripting interfaces as `get-windows`, addressed
-to the paste event's PID. Chrome/Edge/Brave/Vivaldi/Opera/Arc and Safari families are
-supported; Firefox does not expose this interface. To authorize Chrome from the daemon's
-terminal, run `osascript -e 'tell application "Google Chrome" to get URL of active tab of front window'`.
-For Safari, use `osascript -e 'tell application "Safari" to get URL of front document'`.
-Browser URL collection remains macOS-only; tab IDs, renderer PIDs, and frames remain unavailable.
-Window records include available bounds, owner resident-memory bytes, macOS bundle ID/path,
-and Windows content bounds. Coordinates use the OS's desktop coordinate system.
-Windows requires the interactive input desktop, not a session-zero service.
-Linux requires an X11 session with RECORD and the `libxcb`/`libxcb-record` libraries.
-Linux release jobs use Ubuntu 24.04; older libc versions are not a compatibility promise.
+### Build from source
 
-## Build and check
+Requires Git, **Go 1.26+**, `CGO_ENABLED=1`, and a native compiler for your architecture.
+There are no third-party Go module dependencies; capture uses C/Objective-C adapters.
 
-Requires Go 1.26+, cgo, and a native compiler: Xcode command-line tools on macOS;
-MinGW-w64 GCC or LLVM on Windows; GCC/Clang plus `libxcb1-dev` and
-`libxcb-record0-dev` on Debian/Ubuntu. End users do not need Go or a compiler.
+| Platform | Native prerequisites |
+| --- | --- |
+| macOS | Xcode command-line tools |
+| Windows | MinGW-w64 GCC on `PATH`, or compatible Clang configured with `CC=clang` |
+| Linux | GCC/Clang and XCB development libraries (`libxcb1-dev`, `libxcb-record0-dev` on Debian/Ubuntu) |
 
 ```sh
-go build -o bin/pastetrail ./cmd/pastetrail
+git clone https://github.com/zotniq/pastetrail.git
+cd pastetrail
+```
+
+macOS/Linux:
+
+```sh
+CGO_ENABLED=1 go build -o bin/pastetrail ./cmd/pastetrail
+```
+
+Windows PowerShell:
+
+```powershell
+$env:CGO_ENABLED = "1"
+go build -o bin/pastetrail.exe ./cmd/pastetrail
+```
+
+### Binary distribution
+
+[CI](.github/workflows/ci.yml) is configured to build one binary archive per
+OS/architecture: `.tar.gz` for macOS/Linux and `.zip` for Windows, with SHA-256
+sidecars. Artifacts are unsigned; CI uploads workflow artifacts without publishing
+GitHub releases. Packaging locally is covered under [Development](#development).
+Binary users do not need Go or a compiler. Linux still requires the `libxcb` and
+`libxcb-record` runtime libraries.
+
+## Quick start
+
+From the repository directory:
+
+```sh
+./bin/pastetrail doctor
+./bin/pastetrail daemon --log pastetrail.jsonl
+```
+
+On Windows, use `.\bin\pastetrail.exe` in place of `./bin/pastetrail`.
+If `doctor` reports `permission_required`, complete the [permissions setup](#permissions-and-configuration).
+It reports capabilities without requesting permissions; it does not verify every capture path.
+
+`daemon` stays in the foreground. Paste `hello` into an application, then press
+Ctrl+C in the daemon's terminal to stop. Omit `--log` to write to stdout.
+The first JSONL record contains capabilities; subsequent records describe paste
+attempts or capability changes.
+
+Example macOS event excerpt, formatted for readability with other fields omitted:
+
+```json
+{
+  "schema_version": 1,
+  "type": "paste_attempt",
+  "event": {
+    "trigger": {"kind": "keyboard", "action": "cmd+v", "evidence": "inferred", "source": "system_clipboard"},
+    "content": {
+      "representations": [{"media_type": "text/plain", "data": "hello", "encoding": "utf-8", "size": 5}],
+      "evidence": "observed"
+    },
+    "destination": {
+      "application": {"name": {"value": "iTerm2", "evidence": "observed"}}
+    }
+  }
+}
+```
+
+Evidence is `observed` for a direct observation, `inferred` for an attribution or
+possible paste intent, and `unavailable` when a field cannot be obtained, with a
+reason. A clipboard snapshot does not establish which representation an application consumed.
+See the [event schema](internal/model/event.go) for all fields.
+
+## Use as a Go library
+
+In your own Go module, run `go get github.com/zotniq/pastetrail`. Save this as
+`main.go` and run it with `go run .`, with `CGO_ENABLED=1` and the same native
+prerequisites and permissions:
+
+```go
+package main
+
+import (
+    "context"
+    "encoding/json"
+    "errors"
+    "log"
+    "os"
+    "os/signal"
+
+    "github.com/zotniq/pastetrail"
+)
+
+func main() {
+    ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+    defer stop()
+
+    monitor, err := pastetrail.New(pastetrail.Options{})
+    if err != nil {
+        log.Fatal(err)
+    }
+    encoder := json.NewEncoder(os.Stdout)
+    err = monitor.Run(ctx, func(record pastetrail.Record) error {
+        return encoder.Encode(record)
+    })
+    if err != nil && !errors.Is(err, context.Canceled) {
+        log.Fatal(err)
+    }
+}
+```
+
+Callbacks run serially; a callback error or context cancellation stops collection.
+One native monitor can run per process. `NewWithSource` accepts an application-provided
+`Source` for additional triggers. No AppKit main run loop is required by the host.
+
+## Permissions and configuration
+
+### macOS permissions
+
+Grant **Input Monitoring** to the terminal or installed executable running PasteTrail
+in System Settings → Privacy & Security. **Accessibility** enables focus fallback
+and additional window/document fields. Restart the host after changing permissions.
+
+**Automation** access enables active terminal TTY and browser URL queries. From the
+terminal that runs PasteTrail, run the relevant read-only query and authorize it:
+
+```sh
+# iTerm2 or Terminal.app
+osascript -e 'tell application "iTerm2" to get tty of current session of current window'
+osascript -e 'tell application "Terminal" to get tty of selected tab of front window'
+
+# Chrome or Safari
+osascript -e 'tell application "Google Chrome" to get URL of active tab of front window'
+osascript -e 'tell application "Safari" to get URL of front document'
+```
+
+The daemon queries the attributed process and reports denied access without opening
+a permission prompt from its input callback. Missing command/URL fields include a reason.
+
+### Windows and Linux sessions
+
+Windows requires an interactive input desktop; session-zero services are unsupported.
+Linux requires an interactive X11 session with the RECORD extension. Wayland sessions,
+including attempts to rely on XWayland for global capture, are unsupported.
+
+### Options and data handling
+
+| Daemon flag | Default | Behavior |
+| --- | --- | --- |
+| `--log FILE` | stdout | Append JSONL to a file |
+| `--max-content-bytes N` | `1048576` (1 MiB) | Total text/rich-text payload limit per event; maximum 64 MiB; `0` selects the default |
+
+The Go `Options` also provides `DedupWindow` (default 2 seconds) and
+`MaxDedupEntries` (default 4096). Deduplication uses event identity; repeated pastes
+of the same content remain separate attempts.
+
+Logs contain captured text and available URLs, paths, and command lines. There is
+no built-in redaction, encryption, or log rotation. File references use metadata
+inspection without opening contents; non-local URIs are preserved without fetching
+them. Non-UTF-8 representation bytes use base64. Windows CF_HTML retains its native
+header as `application/x-windows-cf-html`.
+
+## Missing features and current limits
+
+- **Every paste attempt:** menu/context-menu actions, application-internal pastes, and direct programmatic insertion are unobservable through the native adapters. Recognized synthetic shortcuts may be captured, but automation origin is often unavailable.
+- **Guaranteed attribution:** clipboard, focus, and process state can change during sampling. Multiple tabs or foreground processes can prevent identifying a recipient. Custom shortcuts, keyboard layouts, secure input, and elevated destinations can be missed.
+- **Browser details:** tab IDs, renderer PIDs, and frame identity are unavailable. Active URL collection is macOS-only.
+- **Terminal depth:** Windows command mapping, arbitrary terminal active-tab integrations, custom tmux server sockets, and attribution to every synchronized tmux pane are missing. SSH/container interior commands, PIDs, and working directories are unavailable.
+- **Middle-click coverage:** macOS support is limited to iTerm2's saved Pointer bindings. Its selection content and clicked pane are unavailable; runtime mouse reporting can override the binding. Custom preference folders, trackpad-only gestures, and other apps' mouse mappings are unsupported. Linux middle-click does not identify the recipient.
+- **Additional clipboard formats:** images and arbitrary binary formats are unsupported. Linux X11 incremental (`INCR`) selection transfers are unsupported; incomplete content is reported.
+- **Service installation:** the CLI does not detach, install a background service, or manage startup. Use an interactive user's service manager to supervise it.
+
+An unavailable field does not mean that a paste did not occur.
+
+## Development
+
+From the repository root, with cgo enabled and the native prerequisites installed:
+
+```sh
 go test -race -coverpkg=./... -coverprofile=coverage.out ./...
 python3 scripts/coverage.py
 go tool cover -html=coverage.out -o coverage.html
 go vet ./...
-python3 scripts/package.py v0.1.0-dev
+python3 -m unittest discover -s scripts -p 'test_*.py'
+python3 scripts/package.py
 ```
 
-Packaging creates a binary archive and SHA-256 sidecar for the selected native
-OS/architecture under `dist/`. CI builds separate macOS, Windows, and Linux artifacts
-for amd64 and arm64. Artifacts are unsigned; the workflow does not publish releases.
+Use `python` if that is your Python 3 command. Omit `-race` on Windows arm64.
+The coverage gate requires **strictly greater than 95% of all Go statements**,
+including the CLI. Go coverage excludes C/Objective-C and does not establish native
+capture correctness. CI separately checks native serialization/queue handling,
+macOS attribution/Automation fixtures, and Linux Xvfb integration. Interactive
+macOS/Windows behavior still needs checks on permission-enabled desktops.
 
-The coverage gate requires **strictly greater than 95%** of all Go statements,
-including the CLI. Go coverage excludes C/Objective-C and does not prove native
-capture works. CI also exercises the native serializer and queue; macOS checks
-event destination changes and focus fallback without posting input. Linux adds
-isolated Xvfb clipboard/input/disconnection checks (`go test -tags=integration ./...`,
-requiring Xvfb, xterm, xclip, xdotool, and xprop). macOS/Windows interactive capture
-still needs verification on permission-enabled desktops. Go's race detector is
-unavailable on Windows arm64; that job runs the regular suite.
+For Linux integration, install Xvfb, xterm, xclip, xdotool, and xprop, then run
+`go test -tags=integration ./...`. Packaging builds the current OS/architecture under
+`dist/`, including the executable, README, licenses, archive, and checksum. Linux
+CI uses Ubuntu 24.04; compatibility with older libc versions is not guaranteed.
 
-## Source layout
+### Source layout
 
-The module root exposes the public API; implementations live under `internal/`:
+The module root exposes the public API. Implementations are under `internal/`:
 
-- `application/`, `browser/`, `terminal/`: destination attribution; terminal helpers include `tmux.go`, `ssh.go`, and `container.go`.
-- `capture/`: native snapshot decoding, event delivery, and destination enrichment.
-- `platform/macos/`, `platform/windows/`, `platform/linux/`: OS adapters; `platform/native/` shares C serialization and the queue.
-- `content/`, `model/`: clipboard formats, normalization, event types, and the source contract.
-- `cli/`: command handling. `cmd/pastetrail/` is the executable entry point.
+| Directory | Responsibility |
+| --- | --- |
+| [`application/`](internal/application), [`browser/`](internal/browser), [`terminal/`](internal/terminal) | Destination attribution; terminal helpers include tmux, SSH, and containers |
+| [`capture/`](internal/capture) | Snapshot decoding, delivery, and destination enrichment |
+| [`platform/`](internal/platform) | `macos/`, `windows/`, and `linux/` adapters; `native/` shares C serialization and the queue |
+| [`content/`](internal/content), [`model/`](internal/model) | Clipboard formats, normalization, event types, and source contract |
+| [`cli/`](internal/cli) | Command handling; [`cmd/pastetrail/`](cmd/pastetrail) is the executable entry point |
 
-See [LICENSE](LICENSE).
+## Support and contributing
+
+Open an [issue](https://github.com/zotniq/pastetrail/issues) with the OS/architecture,
+`pastetrail version`, `doctor` output, application/terminal, trigger, and reproduction
+steps. Remove captured content, private URLs, paths, and command arguments from examples.
+
+For contributions, keep changes focused, add regression coverage for behavior changes,
+run the relevant checks above, and update affected platform support/limitations here.
+Include the platforms actually verified in your pull request.
+
+## License
+
+[Apache-2.0](LICENSE).
