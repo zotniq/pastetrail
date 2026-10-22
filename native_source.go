@@ -47,7 +47,7 @@ func (s *nativeSource) Capabilities(context.Context) []Capability {
 		{Feature: "menu_context_menu_programmatic_and_app_internal_pastes", Status: "unavailable", Reason: "applications do not expose a universal external paste-attempt notification"},
 		{Feature: "middle_click", Status: middleClickStatus(status), Reason: "only X11 PRIMARY-selection middle-button attempts are detected; recipient attribution is unavailable"},
 		{Feature: "clipboard_content", Status: status, Reason: "text, HTML, RTF, and file references when exposed; snapshots can race clipboard changes"},
-		{Feature: "application_context", Status: status, Reason: "foreground application and available window metadata; permission and application dependent"},
+		{Feature: "application_context", Status: status, Reason: "macOS event target PID or inferred Accessibility focus; foreground context on other platforms; available metadata depends on permissions and applications"},
 		{Feature: "browser_context", Status: "partial", Reason: "window title when exposed; document URL via macOS Accessibility only; tab IDs and focused frames unavailable"},
 		{Feature: "terminal_context", Status: "partial", Reason: "macOS/Linux local foreground TTY processes and tmux panes when unambiguous; Windows console mapping and ambiguous terminal tabs are unavailable"},
 		{Feature: "ssh_remote_context", Status: "partial", Reason: "local SSH command and destination only; remote foreground process, PID, and working directory unavailable"},
@@ -64,20 +64,21 @@ func middleClickStatus(status string) string {
 }
 
 type nativeSnapshot struct {
-	Key        string `json:"key"`
-	TimeNS     int64  `json:"time_ns"`
-	CapturedNS int64  `json:"captured_ns"`
-	Action     string `json:"action"`
-	Kind       string `json:"kind"`
-	Automated  *bool  `json:"automated"`
-	Source     string `json:"source"`
-	PID        int    `json:"pid"`
-	App        string `json:"app"`
-	Executable string `json:"executable"`
-	Window     string `json:"window"`
-	Title      string `json:"title"`
-	Document   string `json:"document"`
-	Formats    []struct {
+	Key          string `json:"key"`
+	TimeNS       int64  `json:"time_ns"`
+	CapturedNS   int64  `json:"captured_ns"`
+	Action       string `json:"action"`
+	Kind         string `json:"kind"`
+	Automated    *bool  `json:"automated"`
+	Source       string `json:"source"`
+	PID          int    `json:"pid"`
+	App          string `json:"app"`
+	Executable   string `json:"executable"`
+	Window       string `json:"window"`
+	Title        string `json:"title"`
+	Document     string `json:"document"`
+	TargetMethod string `json:"target_method"`
+	Formats      []struct {
 		Type      string `json:"type"`
 		Data      []byte `json:"data"`
 		Size      int    `json:"size"`
@@ -149,10 +150,11 @@ func decodeSnapshot(data []byte, limit int) (decodedObservation, error) {
 	if n.Title != "" {
 		a.WindowTitle = Known(n.Title)
 	}
-	if browserName(n.App + " " + n.Executable) {
+	applyTargetEvidence(a, n.TargetMethod)
+	if browserName(a.Name.Value + " " + a.Executable.Value) {
 		b := &Browser{}
 		if n.Title != "" {
-			b.Title = Field[string]{Value: n.Title, Evidence: Inferred, Reason: "foreground browser window title"}
+			b.Title = Field[string]{Value: n.Title, Evidence: Inferred, Reason: "window title of the attributed browser process"}
 		}
 		if strings.HasPrefix(n.Document, "https://") || strings.HasPrefix(n.Document, "http://") {
 			b.URL = Field[string]{Value: n.Document, Evidence: Inferred, Reason: "focused window accessibility document URL"}
@@ -160,6 +162,27 @@ func decodeSnapshot(data []byte, limit int) (decodedObservation, error) {
 		e.Destination.Browser = b
 	}
 	return decodedObservation{Observation: Observation{Key: n.Key, Event: e}, dropped: n.Dropped}, nil
+}
+
+func applyTargetEvidence(a *Application, method string) {
+	switch method {
+	case "event_target_pid":
+		a.PID.Reason = "Core Graphics event target process ID"
+	case "accessibility_focus":
+		reason := "event target PID unavailable; focused application sampled through Accessibility after input"
+		a.PID.Evidence, a.PID.Reason = Inferred, reason
+		for _, f := range []*Field[string]{&a.Name, &a.Executable, &a.WindowID, &a.WindowTitle} {
+			if f.Evidence != "" {
+				f.Evidence, f.Reason = Inferred, reason
+			}
+		}
+	case "unavailable":
+		reason := "event target PID and live Accessibility focus are unavailable; no cached application was used"
+		*a = Application{
+			PID: Missing[int](reason), Name: Missing[string](reason),
+			Executable: Missing[string](reason), WindowID: Missing[string](reason), WindowTitle: Missing[string](reason),
+		}
+	}
 }
 
 func browserName(s string) bool {

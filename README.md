@@ -44,7 +44,7 @@ A standalone daemon cannot guarantee every paste attempt across all applications
 | Shortcut attempts | Cmd+V variants | Ctrl+V, Ctrl+Shift+V, Shift+Insert | Ctrl+V, Ctrl+Shift+V, Shift+Insert |
 | Middle-click | Unavailable | Unavailable | PRIMARY selection; recipient unavailable |
 | Text, HTML, RTF, file references | Available formats | Available formats | Available formats; incremental transfers unavailable |
-| Application/PID/window | Available OS attributes | Available OS attributes | Available window properties; local PID only |
+| Application/PID/window | Event target PID; available app/window attributes | Available OS attributes | Available window properties; local PID only |
 | Browser | Window title; document URL when Accessibility exposes it | Window title | Window title |
 | Terminal command, PID, cwd | Unambiguous local TTY | Unavailable | Unambiguous local TTY |
 | tmux | Active pane on default server socket | Unavailable | Active pane on default server socket |
@@ -58,7 +58,10 @@ tmux synchronized panes are not mapped to all recipients.
 SSH and container contexts identify recognizable **local** commands and destinations;
 remote/container interior commands, PIDs, and working directories remain unavailable.
 
-macOS requires Input Monitoring; Accessibility enables additional window/URL fields.
+macOS requires Input Monitoring. It resolves the keyboard event's target PID;
+if absent, a fresh Accessibility focus query supplies an inferred destination.
+If neither is available, the destination remains unavailable. Accessibility also
+enables additional window/URL fields. No AppKit main run loop is required by the host.
 Windows requires the interactive input desktop, not a session-zero service.
 Linux requires an X11 session with RECORD and the `libxcb`/`libxcb-record` libraries.
 Linux release jobs use Ubuntu 24.04; older libc versions are not a compatibility promise.
@@ -84,7 +87,8 @@ for amd64 and arm64. Artifacts are unsigned; the workflow does not publish relea
 
 The coverage gate requires **strictly greater than 95%** of all Go statements,
 including the CLI. Go coverage excludes C/Objective-C and does not prove native
-capture works. CI also exercises the native serializer and queue; Linux adds
+capture works. CI also exercises the native serializer and queue; macOS checks
+event destination changes and focus fallback without posting input. Linux adds
 isolated Xvfb clipboard/input/disconnection checks (`go test -tags=integration ./...`,
 requiring Xvfb, xterm, xclip, xdotool, and xprop). macOS/Windows interactive capture
 still needs verification on permission-enabled desktops. Go's race detector is

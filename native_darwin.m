@@ -3,6 +3,7 @@
 #include "native.h"
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
+#include <limits.h>
 #include <stdio.h>
 
 static CFMachPortRef tap;
@@ -30,34 +31,83 @@ static NSString *ax_string(AXUIElementRef element, CFStringRef attribute) {
     return [result autorelease];
 }
 
-static void capture(const char *action) {
+static pid_t focused_pid(void) {
+    if (!AXIsProcessTrusted())
+        return 0;
+    AXUIElementRef system = AXUIElementCreateSystemWide();
+    AXUIElementSetMessagingTimeout(system, 0.03);
+    CFTypeRef application = NULL;
+    pid_t pid = 0;
+    if (AXUIElementCopyAttributeValue(system, kAXFocusedApplicationAttribute, &application) ==
+            kAXErrorSuccess &&
+        application && CFGetTypeID(application) == AXUIElementGetTypeID()) {
+        if (AXUIElementGetPid((AXUIElementRef)application, &pid) != kAXErrorSuccess)
+            pid = 0;
+    }
+    if (application)
+        CFRelease(application);
+    CFRelease(system);
+    return pid > 0 ? pid : 0;
+}
+
+typedef struct {
+    pid_t pid;
+    const char *method;
+} paste_target;
+
+static paste_target event_target(CGEventRef event, pid_t (*query_focus)(void)) {
+    int64_t pid = event ? CGEventGetIntegerValueField(event, kCGEventTargetUnixProcessID) : 0;
+    if (pid > 0 && pid <= INT_MAX)
+        return (paste_target){(pid_t)pid, "event_target_pid"};
+    pid_t focused = query_focus();
+    if (focused > 0)
+        return (paste_target){focused, "accessibility_focus"};
+    return (paste_target){0, "unavailable"};
+}
+
+static void destination_context(pt_json *j, CGEventRef event, pid_t (*query_focus)(void),
+                                bool accessibility) {
+    /* NSWorkspace.frontmostApplication can remain cached until the MAIN run
+     * loop advances. A Go library must not require its host to run AppKit's
+     * main loop. Resolve each event's recipient before looking up app metadata. */
+    paste_target target = event_target(event, query_focus);
+    pt_property(j, "target_method", target.method);
+    if (!target.pid)
+        return;
+    pt_put(j, ",\"pid\":");
+    pt_number(j, target.pid);
+    NSRunningApplication *app =
+        [NSRunningApplication runningApplicationWithProcessIdentifier:target.pid];
+    if (app && [app processIdentifier] == target.pid) {
+        pt_property(j, "app", [[app localizedName] UTF8String]);
+        pt_property(j, "executable", [[[app executableURL] path] UTF8String]);
+    }
+    if (!accessibility)
+        return;
+    AXUIElementRef application = AXUIElementCreateApplication(target.pid);
+    AXUIElementSetMessagingTimeout(application, 0.03);
+    CFTypeRef window = NULL;
+    if (AXUIElementCopyAttributeValue(application, kAXFocusedWindowAttribute, &window) ==
+            kAXErrorSuccess &&
+        window && CFGetTypeID(window) == AXUIElementGetTypeID()) {
+        AXUIElementSetMessagingTimeout((AXUIElementRef)window, 0.03);
+        NSString *title = ax_string((AXUIElementRef)window, kAXTitleAttribute);
+        NSString *document = ax_string((AXUIElementRef)window, kAXDocumentAttribute);
+        if (title)
+            pt_property(j, "title", [title UTF8String]);
+        if (document)
+            pt_property(j, "document", [document UTF8String]);
+    }
+    if (window)
+        CFRelease(window);
+    CFRelease(application);
+}
+
+static void capture(CGEventRef event, const char *action) {
     @autoreleasepool {
         pt_json j;
         pt_event_begin(&j, "keyboard", action, "system_clipboard");
-        NSRunningApplication *app = [[NSWorkspace sharedWorkspace] frontmostApplication];
-        if (app) {
-            pt_put(&j, ",\"pid\":");
-            pt_number(&j, [app processIdentifier]);
-            pt_property(&j, "app", [[app localizedName] UTF8String]);
-            pt_property(&j, "executable", [[[app executableURL] path] UTF8String]);
-            if (AXIsProcessTrusted()) {
-                AXUIElementRef application = AXUIElementCreateApplication([app processIdentifier]);
-                AXUIElementSetMessagingTimeout(application, 0.03);
-                CFTypeRef window = NULL;
-                if (AXUIElementCopyAttributeValue(application, kAXFocusedWindowAttribute,
-                                                  &window) == kAXErrorSuccess &&
-                    window) {
-                    NSString *title = ax_string((AXUIElementRef)window, kAXTitleAttribute);
-                    NSString *document = ax_string((AXUIElementRef)window, kAXDocumentAttribute);
-                    if (title)
-                        pt_property(&j, "title", [title UTF8String]);
-                    if (document)
-                        pt_property(&j, "document", [document UTF8String]);
-                    CFRelease(window);
-                }
-                CFRelease(application);
-            }
-        }
+        destination_context(&j, event, focused_pid, AXIsProcessTrusted());
         NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
         NSInteger generation = [pasteboard changeCount];
         pt_put(&j, ",\"formats\":[");
@@ -115,7 +165,7 @@ static CGEventRef callback(CGEventTapProxy proxy, CGEventType type, CGEventRef e
             (flags & kCGEventFlagMaskShift)
                 ? ((flags & kCGEventFlagMaskAlternate) ? "cmd+option+shift+v" : "cmd+shift+v")
                 : ((flags & kCGEventFlagMaskAlternate) ? "cmd+option+v" : "cmd+v");
-        capture(action);
+        capture(event, action);
     }
     return event;
 }
@@ -128,8 +178,10 @@ int pt_open(int limit) {
                  "Input Monitoring permission is required; run pastetrail doctor");
         return 0;
     }
-    tap = CGEventTapCreate(kCGSessionEventTap, kCGTailAppendEventTap, kCGEventTapOptionListenOnly,
-                           CGEventMaskBit(kCGEventKeyDown), callback, NULL);
+    /* At the annotated tap, events have been routed to a target process. */
+    tap = CGEventTapCreate(kCGAnnotatedSessionEventTap, kCGTailAppendEventTap,
+                           kCGEventTapOptionListenOnly, CGEventMaskBit(kCGEventKeyDown), callback,
+                           NULL);
     if (!tap) {
         snprintf(pt_failure, sizeof(pt_failure), "could not create a passive input event tap");
         return 0;

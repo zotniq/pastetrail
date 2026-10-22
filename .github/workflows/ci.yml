@@ -92,6 +92,10 @@ jobs:
           if [ "$GOOS" != windows ]; then sanitizer=(-fsanitize=address,undefined); fi
           "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" native_common.c internal/nativecheck/check.c -o bin/nativecheck
           bin/nativecheck
+          if [ "$GOOS" = darwin ]; then
+            "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework ApplicationServices native_common.c internal/nativecheck/darwin.m -o bin/darwincheck
+            bin/darwincheck
+          fi
       - name: Package native binary
         run: |
           python scripts/package.py

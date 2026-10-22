@@ -234,3 +234,61 @@ func TestNativeStoppedCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestMacDestinationAttribution(t *testing.T) {
+	for _, method := range []string{"event_target_pid", "accessibility_focus", "unavailable"} {
+		t.Run(method, func(t *testing.T) {
+			b := &testBridge{data: make(chan []byte, 4)}
+			apps := []string{"Google Chrome", "Codex", "Terminal", "Google Chrome"}
+			for i, app := range apps {
+				data, err := json.Marshal(map[string]any{
+					"key": app + string(rune('0'+i)), "time_ns": i + 1, "pid": 100 + i,
+					"app": app, "executable": "/Applications/" + app, "window": "fixture", "title": app,
+					"target_method": method,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				b.data <- data
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			m, err := NewWithSource(sourceForTest(b), Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			seen := 0
+			err = m.Run(ctx, func(r Record) error {
+				if r.Event == nil {
+					return nil
+				}
+				e := r.Event
+				a := e.Destination.Application
+				if method == "unavailable" {
+					if a.PID.Evidence != Unavailable || a.Name.Value != "" || a.PID.Value != 0 || a.PID.Reason == "" || e.Destination.Browser != nil {
+						t.Fatalf("unavailable destination retained stale context: %+v", e.Destination)
+					}
+				} else {
+					want := Observed
+					if method == "accessibility_focus" {
+						want = Inferred
+					}
+					if a.PID.Value != 100+seen || a.Name.Value != apps[seen] || a.PID.Evidence != want || a.Name.Evidence != want || a.PID.Reason == "" {
+						t.Fatalf("wrong recipient after app switch: %+v", a)
+					}
+					if (e.Destination.Browser != nil) != (apps[seen] == "Google Chrome") {
+						t.Fatalf("browser context leaked across app switch: %+v", e.Destination)
+					}
+				}
+				seen++
+				if seen == len(apps) {
+					cancel()
+				}
+				return nil
+			})
+			if !errors.Is(err, context.Canceled) || seen != len(apps) {
+				t.Fatalf("received %d events: %v", seen, err)
+			}
+		})
+	}
+}

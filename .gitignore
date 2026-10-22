@@ -2,6 +2,7 @@
 /dist/
 /coverage.out
 /coverage.html
+/pastetrail.jsonl
 *.log
 .DS_Store
 .idea/
