@@ -251,7 +251,7 @@ func sshDestination(command string) string {
 			return ""
 		}
 		if a == "--" {
-			if i+1 < len(args) {
+			if i+1 < len(args) && !strings.ContainsAny(args[i+1], "'\"\\") {
 				return args[i+1]
 			}
 			return ""
@@ -259,8 +259,16 @@ func sshDestination(command string) string {
 		if !strings.HasPrefix(a, "-") {
 			return a
 		}
-		if len(a) == 2 && strings.ContainsRune("BbcDEeFIiJLlmOopQRSWw", rune(a[1])) {
-			i++
+		for j := 1; j < len(a); j++ {
+			if strings.ContainsRune("BbcDEeFIiJLlmOoPpQRSWw", rune(a[j])) {
+				if j == len(a)-1 {
+					i++
+				}
+				break
+			}
+			if !strings.ContainsRune("1246AaCfGgKkMNnqsTtVvXxYy", rune(a[j])) {
+				return ""
+			}
 		}
 	}
 	return ""
@@ -280,11 +288,38 @@ func containerDestination(command string) string {
 		if strings.ContainsAny(v, "'\"\\") {
 			return ""
 		}
+		if v == "--" {
+			if i+1 < len(a) && !strings.ContainsAny(a[i+1], "'\"\\") {
+				return a[i+1]
+			}
+			return ""
+		}
 		if !strings.HasPrefix(v, "-") {
 			return v
 		}
-		if v == "-u" || v == "--user" || v == "-w" || v == "--workdir" || v == "-e" || v == "--env" || v == "--env-file" || v == "--detach-keys" {
-			i++
+		if strings.HasPrefix(v, "--") {
+			option, _, attached := strings.Cut(v, "=")
+			switch option {
+			case "--user", "--workdir", "--env", "--env-file", "--detach-keys", "--preserve-fds":
+				if !attached {
+					i++
+				}
+			case "--detach", "--interactive", "--tty", "--privileged":
+			default:
+				return ""
+			}
+			continue
+		}
+		for j := 1; j < len(v); j++ {
+			if strings.ContainsRune("uwe", rune(v[j])) {
+				if j == len(v)-1 {
+					i++
+				}
+				break
+			}
+			if !strings.ContainsRune("dit", rune(v[j])) {
+				return ""
+			}
 		}
 	}
 	return ""

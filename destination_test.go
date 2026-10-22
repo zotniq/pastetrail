@@ -179,3 +179,25 @@ func TestSystemInspectorErrors(t *testing.T) {
 		t.Fatal("missing terminal limitation")
 	}
 }
+
+func TestAmbiguousCommandOptions(t *testing.T) {
+	for command, want := range map[string]string{
+		"ssh -vvp 22 host": "host", "ssh -vvp22 host": "host", "ssh -P tag host": "host",
+		"ssh --unknown value host": "", "ssh -- 'quoted host'": "", "ssh -Z value host": "",
+		"ssh -t -A host": "host", "ssh -Jjump host": "host",
+	} {
+		if got := sshDestination(command); got != want {
+			t.Errorf("%q: %q != %q", command, got, want)
+		}
+	}
+	for command, want := range map[string]string{
+		"podman exec --preserve-fds 3 box sh": "box", "docker exec --privileged box sh": "box",
+		"docker exec --unknown value box sh": "", "docker exec -Z box sh": "",
+		"docker exec -ituroot box sh": "box", "docker exec -- box sh": "box",
+		"docker exec --": "", "docker exec -- 'quoted box' sh": "", "podman exec --latest sh": "",
+	} {
+		if got := containerDestination(command); got != want {
+			t.Errorf("%q: %q != %q", command, got, want)
+		}
+	}
+}
