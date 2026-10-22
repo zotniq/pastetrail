@@ -76,7 +76,7 @@ jobs:
         run: |
           tags=()
           if [ "$GOOS" = linux ]; then tags=(-tags=integration); fi
-          go test $RACE_FLAG "${tags[@]}" -coverprofile=coverage.out ./...
+          go test $RACE_FLAG "${tags[@]}" -coverpkg=./... -coverprofile=coverage.out ./...
           python scripts/coverage.py coverage.out
           go tool cover -html=coverage.out -o coverage.html
           python -m unittest discover -s scripts -p 'test_*.py'
@@ -84,18 +84,18 @@ jobs:
         run: |
           mkdir -p bin
           case "$GOOS" in
-            darwin) "$CC" -Wall -Wextra -Werror -fsyntax-only native_darwin.m ;;
-            linux) "$CC" -Wall -Wextra -Werror -c native_linux.c -o bin/platform-check.o ;;
-            windows) "$CC" -Wall -Wextra -Werror -c native_windows.c -o bin/platform-check.o ;;
+            darwin) "$CC" -Wall -Wextra -Werror -fsyntax-only internal/platform/macos/capture.m ;;
+            linux) "$CC" -Wall -Wextra -Werror -c internal/platform/linux/capture.c -o bin/platform-check.o ;;
+            windows) "$CC" -Wall -Wextra -Werror -c internal/platform/windows/capture.c -o bin/platform-check.o ;;
           esac
           sanitizer=()
           if [ "$GOOS" != windows ]; then sanitizer=(-fsanitize=address,undefined); fi
-          "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" native_common.c internal/nativecheck/check.c -o bin/nativecheck
+          "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" internal/platform/common.c internal/platform/nativecheck/check.c -o bin/nativecheck
           bin/nativecheck
           if [ "$GOOS" = darwin ]; then
-            "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework ApplicationServices native_common.c internal/nativecheck/darwin.m -o bin/darwincheck
+            "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework ApplicationServices internal/platform/common.c internal/platform/macos/tests/capture.m -o bin/darwincheck
             bin/darwincheck
-            "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework CoreServices internal/nativecheck/terminal.m -o bin/terminalcheck
+            "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework CoreServices internal/platform/macos/tests/automation.m -o bin/terminalcheck
             bin/terminalcheck
           fi
       - name: Package native binary

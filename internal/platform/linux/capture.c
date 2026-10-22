@@ -1,6 +1,6 @@
 //go:build linux && cgo
 
-#include "native.h"
+#include "../native.h"
 #include <errno.h>
 #include <poll.h>
 #include <stdio.h>

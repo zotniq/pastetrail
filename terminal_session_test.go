@@ -6,6 +6,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/zotniq/pastetrail/internal/platform"
 )
 
 func TestActiveTerminalSession(t *testing.T) {
@@ -41,7 +43,7 @@ func TestActiveTerminalSession(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, iterm := range []bool{false, true} {
-		if tty, status := nativeTerminalTTY(0, iterm); tty != "" || status == 0 {
+		if tty, status := platform.TerminalTTY(0, iterm); tty != "" || status == 0 {
 			t.Fatal(tty, status)
 		}
 	}

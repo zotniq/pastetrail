@@ -1,9 +1,9 @@
 //go:build (!darwin && !linux) || (darwin && !cgo)
 
-package pastetrail
+package platform
 
 import "fmt"
 
-func processCWD(int) (string, error) {
+func CWD(int) (string, error) {
 	return "", fmt.Errorf("working directory inspection is unavailable in this build")
 }

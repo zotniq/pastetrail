@@ -22,6 +22,12 @@ class CoverageTests(unittest.TestCase):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 coverage(text)
 
+    def test_merge_blocks_from_multiple_test_packages(self):
+        profile = "mode: atomic\na.go:1.1,2.1 96 0\nb.go:1.1,2.1 4 0\na.go:1.1,2.1 96 1\n"
+        self.assertEqual(coverage(profile), (96, 100))
+        with self.assertRaises(ValueError):
+            coverage(profile + "a.go:1.1,2.1 95 1\n")
+
     def test_strict_threshold(self):
         for covered, expected in ((95, 1), (96, 0)):
             profile = f"mode: count\na.go  {covered} 1\nb.go  {100-covered} 0\n"

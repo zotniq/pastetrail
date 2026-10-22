@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"github.com/zotniq/pastetrail/internal/platform"
 )
 
 func activeTerminalTTY(ctx context.Context, app Application) (string, error) {
-	return queryTerminalTTY(ctx, app, nativeTerminalTTY)
+	return queryTerminalTTY(ctx, app, platform.TerminalTTY)
 }
 
 func queryTerminalTTY(ctx context.Context, app Application, query func(int, bool) (string, int)) (string, error) {

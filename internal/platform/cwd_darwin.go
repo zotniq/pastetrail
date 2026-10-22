@@ -1,6 +1,6 @@
 //go:build darwin && cgo
 
-package pastetrail
+package platform
 
 /*
 #include <stdlib.h>
@@ -19,7 +19,7 @@ import (
 	"unsafe"
 )
 
-func processCWD(pid int) (string, error) {
+func CWD(pid int) (string, error) {
 	p := C.pastetrail_cwd(C.int(pid))
 	if p == nil {
 		return "", fmt.Errorf("working directory is inaccessible")

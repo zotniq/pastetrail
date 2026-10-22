@@ -1,6 +1,6 @@
 //go:build cgo && (darwin || windows || linux)
 
-package pastetrail
+package platform
 
 /*
 #cgo darwin LDFLAGS: -framework AppKit -framework ApplicationServices
@@ -16,16 +16,16 @@ import (
 	"unsafe"
 )
 
-type systemBridge struct{}
+type Bridge struct{}
 
-func (systemBridge) probe() string { return C.GoString(C.pt_probe()) }
-func (systemBridge) open(limit int) error {
+func (Bridge) Probe() string { return C.GoString(C.pt_probe()) }
+func (Bridge) Open(limit int) error {
 	if C.pt_open(C.int(limit)) == 0 {
 		return errors.New(C.GoString(C.pt_error()))
 	}
 	return nil
 }
-func (systemBridge) next() ([]byte, error) {
+func (Bridge) Next() ([]byte, error) {
 	p := C.pt_next(25)
 	if p != nil {
 		defer C.free(unsafe.Pointer(p))
@@ -36,6 +36,4 @@ func (systemBridge) next() ([]byte, error) {
 	}
 	return nil, nil
 }
-func (systemBridge) close() { C.pt_close() }
-
-func newPlatformSource(o Options) Source { return newNativeSource(systemBridge{}, o) }
+func (Bridge) Close() { C.pt_close() }

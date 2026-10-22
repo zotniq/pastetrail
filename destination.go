@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zotniq/pastetrail/internal/platform"
 )
 
 type process struct {
@@ -125,7 +127,7 @@ func terminalName(s string) bool {
 func enrichDestination(ctx context.Context, e *Event) {
 	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
-	enrichBrowser(ctx, e, nativeBrowserURL)
+	enrichBrowser(ctx, e, platform.BrowserURL)
 	if !terminalName(e.Destination.Application.Name.Value + " " + e.Destination.Application.Executable.Value) {
 		return
 	}
@@ -135,7 +137,7 @@ func enrichDestination(ctx context.Context, e *Event) {
 		command: func(ctx context.Context, pid int) (string, error) {
 			return commandOutput(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "command=")
 		},
-		cwd: processCWD, tmux: inspectTmux, host: os.Hostname,
+		cwd: platform.CWD, tmux: inspectTmux, host: os.Hostname,
 	})
 }
 

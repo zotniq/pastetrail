@@ -12,10 +12,10 @@ import (
 )
 
 type nativeBridge interface {
-	probe() string
-	open(int) error
-	next() ([]byte, error)
-	close()
+	Probe() string
+	Open(int) error
+	Next() ([]byte, error)
+	Close()
 }
 
 type nativeSource struct {
@@ -34,7 +34,7 @@ func newNativeSource(b nativeBridge, o Options) *nativeSource {
 }
 
 func (s *nativeSource) Capabilities(context.Context) []Capability {
-	status, reason, ok := strings.Cut(s.bridge.probe(), "|")
+	status, reason, ok := strings.Cut(s.bridge.Probe(), "|")
 	if !ok {
 		reason = "native backend returned an invalid capability response"
 		status = "unavailable"
@@ -255,13 +255,13 @@ func (s *nativeSource) Run(ctx context.Context, emit func(Observation) error) er
 		defer close(stopped)
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
-		if err := s.bridge.open(s.options.MaxContentBytes); err != nil {
+		if err := s.bridge.Open(s.options.MaxContentBytes); err != nil {
 			done <- err
 			return
 		}
-		defer s.bridge.close()
+		defer s.bridge.Close()
 		for ctx.Err() == nil {
-			data, err := s.bridge.next()
+			data, err := s.bridge.Next()
 			if err != nil {
 				done <- err
 				return

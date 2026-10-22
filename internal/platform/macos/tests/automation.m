@@ -1,4 +1,4 @@
-#include "../../native_automation_darwin.m"
+#include "../automation.m"
 #include <assert.h>
 #include <string.h>
 

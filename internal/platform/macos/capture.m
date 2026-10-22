@@ -1,6 +1,6 @@
 //go:build darwin && cgo
 
-#include "native.h"
+#include "../native.h"
 #import <AppKit/AppKit.h>
 #import <ApplicationServices/ApplicationServices.h>
 #include <limits.h>

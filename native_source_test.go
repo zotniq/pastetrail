@@ -21,10 +21,10 @@ type testBridge struct {
 	closed           atomic.Bool
 }
 
-func (b *testBridge) probe() string  { return b.status }
-func (b *testBridge) open(int) error { return b.openErr }
-func (b *testBridge) close()         { b.closed.Store(true) }
-func (b *testBridge) next() ([]byte, error) {
+func (b *testBridge) Probe() string  { return b.status }
+func (b *testBridge) Open(int) error { return b.openErr }
+func (b *testBridge) Close()         { b.closed.Store(true) }
+func (b *testBridge) Next() ([]byte, error) {
 	if b.nextErr != nil {
 		return nil, b.nextErr
 	}

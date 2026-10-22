@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/zotniq/pastetrail/internal/platform"
 )
 
 func TestProcessParsing(t *testing.T) {
@@ -160,11 +162,11 @@ func TestSystemInspectorErrors(t *testing.T) {
 	if _, err := commandOutput(ctx, "pastetrail-command-that-does-not-exist"); err == nil {
 		t.Fatal("missing command succeeded")
 	}
-	if _, err := processCWD(-1); err == nil {
+	if _, err := platform.CWD(-1); err == nil {
 		t.Fatal("invalid process accepted")
 	}
 	if runtime.GOOS != "windows" {
-		if cwd, err := processCWD(os.Getpid()); err == nil && !strings.HasPrefix(cwd, "/") {
+		if cwd, err := platform.CWD(os.Getpid()); err == nil && !strings.HasPrefix(cwd, "/") {
 			t.Fatal(cwd)
 		}
 	}

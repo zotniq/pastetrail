@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/zotniq/pastetrail/internal/platform"
 )
 
 func TestBrowserAutomation(t *testing.T) {
@@ -40,7 +42,7 @@ func TestBrowserAutomation(t *testing.T) {
 		enrichBrowser(context.Background(), &e, func(int, int) (string, int) { t.Fatal("unexpected query"); return "", 0 })
 		enrichBrowser(ctx, &e, func(int, int) (string, int) { t.Fatal("query after cancellation"); return "", 0 })
 	}
-	if value, status := nativeBrowserURL(0, 1); value != "" || status == 0 {
+	if value, status := platform.BrowserURL(0, 1); value != "" || status == 0 {
 		t.Fatal(value, status)
 	}
 }

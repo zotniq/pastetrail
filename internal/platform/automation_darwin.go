@@ -1,6 +1,6 @@
 //go:build darwin && cgo
 
-package pastetrail
+package platform
 
 /*
 #cgo LDFLAGS: -framework CoreServices
@@ -10,7 +10,7 @@ int pt_browser_url(int pid, int kind, char *url, size_t size);
 */
 import "C"
 
-func nativeTerminalTTY(pid int, iterm bool) (string, int) {
+func TerminalTTY(pid int, iterm bool) (string, int) {
 	var buffer [1024]C.char
 	kind := C.int(0)
 	if iterm {
@@ -20,7 +20,7 @@ func nativeTerminalTTY(pid int, iterm bool) (string, int) {
 	return C.GoString(&buffer[0]), int(status)
 }
 
-func nativeBrowserURL(pid, kind int) (string, int) {
+func BrowserURL(pid, kind int) (string, int) {
 	var buffer [8192]C.char
 	status := C.pt_browser_url(C.int(pid), C.int(kind), &buffer[0], C.size_t(len(buffer)))
 	return C.GoString(&buffer[0]), int(status)

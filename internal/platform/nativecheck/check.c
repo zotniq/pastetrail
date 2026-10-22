@@ -1,4 +1,4 @@
-#include "../../native.h"
+#include "../native.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>

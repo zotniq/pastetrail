@@ -1,6 +1,6 @@
 /* Exercise the real macOS destination path with unposted input events. This
  * deliberately runs off the main thread without an AppKit main run loop. */
-#include "../../native_darwin.m"
+#include "../capture.m"
 #include <assert.h>
 #include <pthread.h>
 #include <string.h>
