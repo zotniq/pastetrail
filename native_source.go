@@ -45,11 +45,11 @@ func (s *nativeSource) Capabilities(context.Context) []Capability {
 	return []Capability{
 		{Feature: "keyboard_paste_attempts", Status: status, Reason: reason},
 		{Feature: "menu_context_menu_programmatic_and_app_internal_pastes", Status: "unavailable", Reason: "applications do not expose a universal external paste-attempt notification"},
-		{Feature: "middle_click", Status: middleClickStatus(status), Reason: "only X11 PRIMARY-selection middle-button attempts are detected; recipient attribution is unavailable"},
+		{Feature: "middle_click", Status: middleClickStatus(status), Reason: "X11 PRIMARY selection; macOS iTerm2 saved clipboard/selection middle-button bindings only; iTerm selection content and clicked pane identity unavailable"},
 		{Feature: "clipboard_content", Status: status, Reason: "text, HTML, RTF, and file references when exposed; snapshots can race clipboard changes"},
 		{Feature: "application_context", Status: status, Reason: "macOS event target PID or inferred Accessibility focus; foreground context on other platforms; available metadata depends on permissions and applications"},
 		{Feature: "browser_context", Status: "partial", Reason: "window title when exposed; document URL via macOS Accessibility only; tab IDs and focused frames unavailable"},
-		{Feature: "terminal_context", Status: "partial", Reason: "macOS/Linux local foreground TTY processes and tmux panes when unambiguous; Windows console mapping and ambiguous terminal tabs are unavailable"},
+		{Feature: "terminal_context", Status: "partial", Reason: "macOS iTerm2/Terminal active TTY via Automation; local foreground TTY processes and tmux when unambiguous; Windows console mapping and mouse-selected panes unavailable"},
 		{Feature: "ssh_remote_context", Status: "partial", Reason: "local SSH command and destination only; remote foreground process, PID, and working directory unavailable"},
 		{Feature: "container_context", Status: "partial", Reason: "container identity inferred from recognized local commands; interior process information unavailable"},
 		{Feature: "attempt_confirmation", Status: "unavailable", Reason: "shortcut observation indicates possible intent; insertion, clipboard format consumption, and application remapping are not observable"},
@@ -57,28 +57,32 @@ func (s *nativeSource) Capabilities(context.Context) []Capability {
 }
 
 func middleClickStatus(status string) string {
-	if runtime.GOOS == "linux" {
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
 		return status
 	}
 	return "unavailable"
 }
 
 type nativeSnapshot struct {
-	Key          string `json:"key"`
-	TimeNS       int64  `json:"time_ns"`
-	CapturedNS   int64  `json:"captured_ns"`
-	Action       string `json:"action"`
-	Kind         string `json:"kind"`
-	Automated    *bool  `json:"automated"`
-	Source       string `json:"source"`
-	PID          int    `json:"pid"`
-	App          string `json:"app"`
-	Executable   string `json:"executable"`
-	Window       string `json:"window"`
-	Title        string `json:"title"`
-	Document     string `json:"document"`
-	TargetMethod string `json:"target_method"`
-	Formats      []struct {
+	Key           string   `json:"key"`
+	TimeNS        int64    `json:"time_ns"`
+	CapturedNS    int64    `json:"captured_ns"`
+	Action        string   `json:"action"`
+	Kind          string   `json:"kind"`
+	Automated     *bool    `json:"automated"`
+	Source        string   `json:"source"`
+	TriggerReason string   `json:"trigger_reason"`
+	Button        int      `json:"button"`
+	Clicks        int      `json:"clicks"`
+	Modifiers     []string `json:"modifiers"`
+	PID           int      `json:"pid"`
+	App           string   `json:"app"`
+	Executable    string   `json:"executable"`
+	Window        string   `json:"window"`
+	Title         string   `json:"title"`
+	Document      string   `json:"document"`
+	TargetMethod  string   `json:"target_method"`
+	Formats       []struct {
 		Type      string `json:"type"`
 		Data      []byte `json:"data"`
 		Size      int    `json:"size"`
@@ -103,6 +107,7 @@ func decodeSnapshot(data []byte, limit int) (decodedObservation, error) {
 		return decodedObservation{}, errors.New("native event is missing identity or capture time")
 	}
 	e := Event{Time: time.Unix(0, n.TimeNS), CapturedAt: time.Unix(0, n.CapturedNS), Trigger: Trigger{Kind: n.Kind, Action: n.Action, Evidence: Inferred, Source: n.Source}, Content: Content{Evidence: Observed}}
+	e.Trigger.Reason, e.Trigger.Button, e.Trigger.ClickCount, e.Trigger.Modifiers = n.TriggerReason, n.Button, n.Clicks, n.Modifiers
 	if n.CapturedNS <= 0 {
 		e.CapturedAt = e.Time
 	}

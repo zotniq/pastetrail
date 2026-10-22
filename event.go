@@ -27,11 +27,15 @@ func Missing[T any](reason string) Field[T] { return Field[T]{Evidence: Unavaila
 
 // Trigger describes the action suggesting a paste. Shortcuts imply intent, not insertion.
 type Trigger struct {
-	Kind      string      `json:"kind"`
-	Action    string      `json:"action,omitempty"`
-	Evidence  Evidence    `json:"evidence"`
-	Automated Field[bool] `json:"automated"`
-	Source    string      `json:"source"`
+	Kind       string      `json:"kind"`
+	Action     string      `json:"action,omitempty"`
+	Evidence   Evidence    `json:"evidence"`
+	Automated  Field[bool] `json:"automated"`
+	Source     string      `json:"source"`
+	Reason     string      `json:"reason,omitempty"`
+	Button     int         `json:"button,omitempty"`
+	ClickCount int         `json:"click_count,omitempty"`
+	Modifiers  []string    `json:"modifiers,omitempty"`
 }
 
 // Representation preserves a text or rich-text clipboard format. Binary formats

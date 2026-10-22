@@ -18,11 +18,12 @@ type process struct {
 	tty, name                      string
 }
 type processInspector struct {
-	list    func(context.Context) ([]process, error)
-	command func(context.Context, int) (string, error)
-	cwd     func(int) (string, error)
-	tmux    func(context.Context, int) (paneInfo, error)
-	host    func() (string, error)
+	activeTTY func(context.Context, Application) (string, error)
+	list      func(context.Context) ([]process, error)
+	command   func(context.Context, int) (string, error)
+	cwd       func(int) (string, error)
+	tmux      func(context.Context, int) (paneInfo, error)
+	host      func() (string, error)
 }
 type paneInfo struct {
 	session, window, pane, tty, command, cwd string
@@ -128,7 +129,8 @@ func enrichDestination(ctx context.Context, e *Event) {
 	ctx, cancel := context.WithTimeout(ctx, 500*time.Millisecond)
 	defer cancel()
 	enrichTerminal(ctx, e, processInspector{
-		list: systemProcesses,
+		activeTTY: activeTerminalTTY,
+		list:      systemProcesses,
 		command: func(ctx context.Context, pid int) (string, error) {
 			return commandOutput(ctx, "ps", "-p", strconv.Itoa(pid), "-o", "command=")
 		},
@@ -146,6 +148,10 @@ func enrichTerminal(ctx context.Context, e *Event, in processInspector) {
 		base.Host = Known(host)
 	}
 	e.Destination.Contexts = append(e.Destination.Contexts, base)
+	if e.Trigger.Kind == "mouse" && e.Trigger.Action == "middle_click" && runtime.GOOS == "darwin" {
+		e.Destination.Contexts[0].Command = Missing[string]("clicked terminal pane cannot be identified from the keyboard-active session")
+		return
+	}
 	processes, err := in.list(ctx)
 	if err != nil {
 		e.Destination.Contexts[0].Command = Missing[string](err.Error())
@@ -155,28 +161,27 @@ func enrichTerminal(ctx context.Context, e *Event, in processInspector) {
 	for _, p := range processes {
 		byPID[p.pid] = p
 	}
-	ttys := map[string]bool{}
-	for _, p := range processes {
-		if p.tty == "?" || p.tty == "??" || p.tty == "" {
-			continue
-		}
-		seen := map[int]bool{}
-		for parent := p.parent; parent > 0 && !seen[parent]; parent = byPID[parent].parent {
-			seen[parent] = true
-			if parent == e.Destination.Application.PID.Value {
-				ttys[p.tty] = true
-				break
-			}
-		}
-	}
-	if len(ttys) != 1 {
-		e.Destination.Contexts[0].Command = Missing[string]("active terminal tab is ambiguous or its TTY is unavailable")
-		return
-	}
 	var tty string
-	for value := range ttys {
-		tty = value
+	var sessionErr error
+	if in.activeTTY != nil {
+		tty, sessionErr = in.activeTTY(ctx, e.Destination.Application)
 	}
+	if tty == "" {
+		ttys := descendantTTYs(processes, byPID, e.Destination.Application.PID.Value)
+		if len(ttys) != 1 {
+			reason := "active terminal tab is ambiguous or its TTY is unavailable"
+			if sessionErr != nil {
+				reason += ": " + sessionErr.Error()
+			}
+			e.Destination.Contexts[0].TTY = Missing[string](reason)
+			e.Destination.Contexts[0].Command = Missing[string](reason)
+			return
+		}
+		for value := range ttys {
+			tty = value
+		}
+	}
+	e.Destination.Contexts[0].TTY = inferred(tty)
 	visited := map[string]bool{}
 	for depth := 0; depth < 4 && !visited[tty]; depth++ {
 		visited[tty] = true
@@ -238,6 +243,24 @@ func enrichTerminal(ctx context.Context, e *Event, in processInspector) {
 		}
 		return
 	}
+}
+
+func descendantTTYs(processes []process, byPID map[int]process, appPID int) map[string]bool {
+	ttys := map[string]bool{}
+	for _, p := range processes {
+		if p.tty == "?" || p.tty == "??" || p.tty == "" {
+			continue
+		}
+		seen := map[int]bool{}
+		for parent := p.parent; parent > 0 && !seen[parent]; parent = byPID[parent].parent {
+			seen[parent] = true
+			if parent == appPID {
+				ttys[p.tty] = true
+				break
+			}
+		}
+	}
+	return ttys
 }
 
 func sshDestination(command string) string {

@@ -14,6 +14,53 @@ static pid_t query_fixture_focus(void) {
     return fixture_focus;
 }
 
+static void check_pointer_bindings(void) {
+    NSDictionary *bindings = @{
+        @"Button,2,1,," : @{@"Action" : @"kPasteFromClipboardPointerAction"},
+        @"Button,2,1,o," : @{@"Action" : @"kPasteFromSelectionPointerAction"},
+        @"Button,2,2,cs^," : @{@"Action" : @"kPasteFromSelectionPointerAction"},
+        @"Button,2,2,," : @{@"Action" : @"kOpenTargetPointerAction"},
+        @"Button,2,3,," : @"invalid"
+    };
+    CGEventRef event =
+        CGEventCreateMouseEvent(NULL, kCGEventOtherMouseUp, CGPointZero, kCGMouseButtonCenter);
+    assert(event);
+    CGEventSetIntegerValueField(event, kCGMouseEventClickState, 1);
+    assert(!iterm_pointer_source(nil, event));
+    assert(strcmp(iterm_pointer_source(bindings, event), "system_clipboard") == 0);
+    CGEventSetFlags(event, kCGEventFlagMaskAlternate);
+    assert(strcmp(iterm_pointer_source(bindings, event), "iterm_selection") == 0);
+    CGEventSetIntegerValueField(event, kCGMouseEventClickState, 2);
+    CGEventSetFlags(event,
+                    kCGEventFlagMaskCommand | kCGEventFlagMaskShift | kCGEventFlagMaskControl);
+    assert(strcmp(iterm_pointer_source(bindings, event), "iterm_selection") == 0);
+    CGEventSetFlags(event, 0);
+    assert(!iterm_pointer_source(bindings, event));
+    CGEventSetIntegerValueField(event, kCGMouseEventClickState, 3);
+    assert(!iterm_pointer_source(bindings, event));
+    CGEventSetIntegerValueField(event, kCGMouseEventButtonNumber, 1);
+    assert(!iterm_pointer_source(bindings, event));
+    CGEventSetIntegerValueField(event, kCGMouseEventButtonNumber, 2);
+    CGEventSetIntegerValueField(event, kCGEventTargetUnixProcessID, 0);
+    fixture_focus = 111;
+    unsigned before = focus_queries;
+    assert(event_target(event, query_fixture_focus).pid == 0 && focus_queries == before);
+    assert(!middle_click_source(event));
+    CGEventSetIntegerValueField(event, kCGEventTargetUnixProcessID, 2147483001);
+    assert(!middle_click_source(event));
+    pt_reset();
+    pt_limit = 128;
+    capture(event, "middle_click", "iterm_selection"); // Never reads the system clipboard.
+    char *json = pt_dequeue();
+    assert(json && strstr(json, "iterm_selection") && strstr(json, "inside the application"));
+    assert(!strstr(json, "\"formats\"") && !strstr(json, "\"files\""));
+    free(json);
+    pt_reset();
+    CGEventSetType(event, kCGEventOtherMouseDown);
+    assert(!iterm_pointer_source(bindings, event));
+    CFRelease(event);
+}
+
 static NSDictionary *context_snapshot(CGEventRef event) {
     pt_json j;
     pt_json_init(&j);
@@ -70,6 +117,7 @@ static void *check_destinations(void *unused) {
         fixture_focus = -1;
         assert(event_target(event, query_fixture_focus).pid == 0);
         CFRelease(event);
+        check_pointer_bindings();
     }
     return NULL;
 }

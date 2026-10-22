@@ -5,6 +5,7 @@
 #import <ApplicationServices/ApplicationServices.h>
 #include <limits.h>
 #include <stdio.h>
+#include <string.h>
 
 static CFMachPortRef tap;
 static CFRunLoopSourceRef tap_source;
@@ -59,6 +60,9 @@ static paste_target event_target(CGEventRef event, pid_t (*query_focus)(void)) {
     int64_t pid = event ? CGEventGetIntegerValueField(event, kCGEventTargetUnixProcessID) : 0;
     if (pid > 0 && pid <= INT_MAX)
         return (paste_target){(pid_t)pid, "event_target_pid"};
+    // A click may target a background window; keyboard focus is not its recipient.
+    if (event && CGEventGetType(event) == kCGEventOtherMouseUp)
+        return (paste_target){0, "unavailable"};
     pid_t focused = query_focus();
     if (focused > 0)
         return (paste_target){focused, "accessibility_focus"};
@@ -103,43 +107,121 @@ static void destination_context(pt_json *j, CGEventRef event, pid_t (*query_focu
     CFRelease(application);
 }
 
-static void capture(CGEventRef event, const char *action) {
+static const char *iterm_pointer_source(NSDictionary *bindings, CGEventRef event) {
+    if (![bindings isKindOfClass:[NSDictionary class]] ||
+        CGEventGetType(event) != kCGEventOtherMouseUp ||
+        CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber) != 2)
+        return NULL;
+    CGEventFlags flags = CGEventGetFlags(event);
+    NSString *mods =
+        [NSString stringWithFormat:@"%@%@%@%@", flags & kCGEventFlagMaskCommand ? @"c" : @"",
+                                   flags & kCGEventFlagMaskAlternate ? @"o" : @"",
+                                   flags & kCGEventFlagMaskShift ? @"s" : @"",
+                                   flags & kCGEventFlagMaskControl ? @"^" : @""];
+    NSString *key = [NSString
+        stringWithFormat:@"Button,2,%lld,%@,",
+                         (long long)CGEventGetIntegerValueField(event, kCGMouseEventClickState),
+                         mods];
+    id binding = bindings[key];
+    if (![binding isKindOfClass:[NSDictionary class]])
+        return NULL;
+    id action = binding[@"Action"];
+    if ([action isEqual:@"kPasteFromClipboardPointerAction"])
+        return "system_clipboard";
+    if ([action isEqual:@"kPasteFromSelectionPointerAction"])
+        return "iterm_selection";
+    return NULL;
+}
+
+static const char *middle_click_source(CGEventRef event) {
+    int64_t pid = CGEventGetIntegerValueField(event, kCGEventTargetUnixProcessID);
+    if (pid <= 0 || pid > INT_MAX)
+        return NULL;
+    NSRunningApplication *app =
+        [NSRunningApplication runningApplicationWithProcessIdentifier:(pid_t)pid];
+    if (![[app bundleIdentifier] isEqualToString:@"com.googlecode.iterm2"])
+        return NULL;
+    CFPropertyListRef custom = CFPreferencesCopyAppValue(CFSTR("LoadPrefsFromCustomFolder"),
+                                                         CFSTR("com.googlecode.iterm2"));
+    bool has_custom =
+        custom && CFGetTypeID(custom) == CFBooleanGetTypeID() && CFBooleanGetValue(custom);
+    if (custom)
+        CFRelease(custom);
+    if (has_custom)
+        return NULL;
+    CFPropertyListRef bindings =
+        CFPreferencesCopyAppValue(CFSTR("PointerActions"), CFSTR("com.googlecode.iterm2"));
+    const char *source = iterm_pointer_source((__bridge NSDictionary *)bindings, event);
+    if (bindings)
+        CFRelease(bindings);
+    return source;
+}
+
+static void capture(CGEventRef event, const char *action, const char *source) {
     @autoreleasepool {
         pt_json j;
-        pt_event_begin(&j, "keyboard", action, "system_clipboard");
-        destination_context(&j, event, focused_pid, AXIsProcessTrusted());
-        NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
-        NSInteger generation = [pasteboard changeCount];
-        pt_put(&j, ",\"formats\":[");
-        int first = 1;
-        NSArray *types = @[ NSPasteboardTypeString, NSPasteboardTypeHTML, NSPasteboardTypeRTF ];
-        const char *media[] = {"text/plain", "text/html", "text/rtf"};
-        for (NSUInteger i = 0; i < [types count]; i++) {
-            NSData *data = [pasteboard dataForType:[types objectAtIndex:i]];
-            if (data)
-                pt_format(&j, media[i], [data bytes], [data length], &first);
-        }
-        pt_put(&j, "],\"files\":[");
-        first = 1;
-        NSUInteger files = 0;
-        for (NSPasteboardItem *item in [pasteboard pasteboardItems]) {
-            NSString *uri = [item stringForType:NSPasteboardTypeFileURL];
-            if (uri) {
-                if (files++ == 1024)
-                    break;
+        bool mouse = CGEventGetType(event) == kCGEventOtherMouseUp;
+        pt_event_begin(&j, mouse ? "mouse" : "keyboard", action, source);
+        if (mouse) {
+            pt_put(&j, ",\"button\":2,\"clicks\":");
+            pt_number(&j, CGEventGetIntegerValueField(event, kCGMouseEventClickState));
+            pt_put(&j, ",\"modifiers\":[");
+            const CGEventFlags masks[] = {kCGEventFlagMaskCommand, kCGEventFlagMaskAlternate,
+                                          kCGEventFlagMaskShift, kCGEventFlagMaskControl};
+            const char *names[] = {"cmd", "option", "shift", "ctrl"};
+            bool first = true;
+            for (unsigned i = 0; i < 4; i++) {
+                if (!(CGEventGetFlags(event) & masks[i]))
+                    continue;
                 if (!first)
                     pt_put(&j, ",");
-                first = 0;
-                pt_string(&j, [uri UTF8String]);
+                pt_string(&j, names[i]);
+                first = false;
             }
+            pt_put(&j, "]");
+            pt_property(&j, "trigger_reason",
+                        "iTerm2 saved pointer binding; mouse reporting or runtime settings may "
+                        "override it");
         }
-        pt_put(&j, "]");
-        if (files > 1024)
-            pt_property(&j, "issue", "file reference count exceeds 1024; list truncated");
-        else if (generation != [pasteboard changeCount])
-            pt_property(
-                &j, "issue",
-                "clipboard changed during capture; representations may not match the attempt");
+        destination_context(&j, event, focused_pid, AXIsProcessTrusted());
+        if (strcmp(source, "iterm_selection") == 0) {
+            pt_property(&j, "issue",
+                        "iTerm2 keeps its most recent selection inside the application; its "
+                        "content is unavailable to this standalone observer");
+        } else {
+            NSPasteboard *pasteboard = [NSPasteboard generalPasteboard];
+            NSInteger generation = [pasteboard changeCount];
+            pt_put(&j, ",\"formats\":[");
+            int first = 1;
+            NSArray *types = @[ NSPasteboardTypeString, NSPasteboardTypeHTML, NSPasteboardTypeRTF ];
+            const char *media[] = {"text/plain", "text/html", "text/rtf"};
+            for (NSUInteger i = 0; i < [types count]; i++) {
+                NSData *data = [pasteboard dataForType:[types objectAtIndex:i]];
+                if (data)
+                    pt_format(&j, media[i], [data bytes], [data length], &first);
+            }
+            pt_put(&j, "],\"files\":[");
+            first = 1;
+            NSUInteger files = 0;
+            for (NSPasteboardItem *item in [pasteboard pasteboardItems]) {
+                NSString *uri = [item stringForType:NSPasteboardTypeFileURL];
+                if (uri) {
+                    if (files++ == 1024)
+                        break;
+                    if (!first)
+                        pt_put(&j, ",");
+                    first = 0;
+                    pt_string(&j, [uri UTF8String]);
+                }
+            }
+            pt_put(&j, "]");
+            if (files > 1024)
+                pt_property(&j, "issue", "file reference count exceeds 1024; list truncated");
+            else if (generation != [pasteboard changeCount])
+                pt_property(
+                    &j, "issue",
+                    "clipboard changed during capture; representations may not match the attempt");
+        }
         pt_put(&j, ",\"captured_ns\":");
         pt_number(&j, pt_now());
         pt_put(&j, "}");
@@ -156,8 +238,16 @@ static CGEventRef callback(CGEventTapProxy proxy, CGEventType type, CGEventRef e
             "input event tap was disabled; monitoring stopped and attempts may have been missed");
         return event;
     }
-    if (type != kCGEventKeyDown)
+    if (type != kCGEventKeyDown) {
+        if (type == kCGEventOtherMouseUp) {
+            @autoreleasepool {
+                const char *source = middle_click_source(event);
+                if (source)
+                    capture(event, "middle_click", source);
+            }
+        }
         return event;
+    }
     CGEventFlags flags = CGEventGetFlags(event);
     if (CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode) == 9 &&
         (flags & kCGEventFlagMaskCommand) && !(flags & kCGEventFlagMaskControl)) {
@@ -165,7 +255,7 @@ static CGEventRef callback(CGEventTapProxy proxy, CGEventType type, CGEventRef e
             (flags & kCGEventFlagMaskShift)
                 ? ((flags & kCGEventFlagMaskAlternate) ? "cmd+option+shift+v" : "cmd+shift+v")
                 : ((flags & kCGEventFlagMaskAlternate) ? "cmd+option+v" : "cmd+v");
-        capture(event, action);
+        capture(event, action, "system_clipboard");
     }
     return event;
 }
@@ -179,9 +269,9 @@ int pt_open(int limit) {
         return 0;
     }
     /* At the annotated tap, events have been routed to a target process. */
-    tap = CGEventTapCreate(kCGAnnotatedSessionEventTap, kCGTailAppendEventTap,
-                           kCGEventTapOptionListenOnly, CGEventMaskBit(kCGEventKeyDown), callback,
-                           NULL);
+    tap = CGEventTapCreate(
+        kCGAnnotatedSessionEventTap, kCGTailAppendEventTap, kCGEventTapOptionListenOnly,
+        CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventOtherMouseUp), callback, NULL);
     if (!tap) {
         snprintf(pt_failure, sizeof(pt_failure), "could not create a passive input event tap");
         return 0;

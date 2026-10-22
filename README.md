@@ -42,11 +42,11 @@ A standalone daemon cannot guarantee every paste attempt across all applications
 | Feature | macOS | Windows | Linux X11 |
 | --- | --- | --- | --- |
 | Shortcut attempts | Cmd+V variants | Ctrl+V, Ctrl+Shift+V, Shift+Insert | Ctrl+V, Ctrl+Shift+V, Shift+Insert |
-| Middle-click | Unavailable | Unavailable | PRIMARY selection; recipient unavailable |
+| Middle-click | iTerm2 saved clipboard/selection bindings; inferred | Unavailable | PRIMARY selection; recipient unavailable |
 | Text, HTML, RTF, file references | Available formats | Available formats | Available formats; incremental transfers unavailable |
 | Application/PID/window | Event target PID; available app/window attributes | Available OS attributes | Available window properties; local PID only |
 | Browser | Window title; document URL when Accessibility exposes it | Window title | Window title |
-| Terminal command, PID, cwd | Unambiguous local TTY | Unavailable | Unambiguous local TTY |
+| Terminal command, PID, cwd | iTerm2/Terminal active TTY; unambiguous local foreground process | Unavailable | Unambiguous local TTY |
 | tmux | Active pane on default server socket | Unavailable | Active pane on default server socket |
 
 Browser tab IDs, renderer PIDs and frames, menu/context-menu actions, app-internal/programmatic
@@ -58,10 +58,22 @@ tmux synchronized panes are not mapped to all recipients.
 SSH and container contexts identify recognizable **local** commands and destinations;
 remote/container interior commands, PIDs, and working directories remain unavailable.
 
+On macOS, middle-click detection matches iTerm2's saved Pointer bindings, including
+modifiers and click counts. Runtime mouse reporting can override those bindings.
+Selection pastes report `source: "iterm_selection"` with unavailable content: iTerm2's
+most recent selection is private and may differ from the clipboard. Resolving the
+clicked pane or retrieving that selection requires application integration. Custom
+preferences folders, trackpad-only gestures, and other apps' mouse bindings are not supported.
+
 macOS requires Input Monitoring. It resolves the keyboard event's target PID;
 if absent, a fresh Accessibility focus query supplies an inferred destination.
 If neither is available, the destination remains unavailable. Accessibility also
 enables additional window/URL fields. No AppKit main run loop is required by the host.
+Active iTerm2/Terminal sessions are queried through read-only Apple Events and may
+require Automation access. To authorize iTerm2 from the terminal running the daemon:
+`osascript -e 'tell application "iTerm2" to get tty of current session of current window'`.
+For Terminal.app, use `osascript -e 'tell application "Terminal" to get tty of selected tab of front window'`.
+The daemon reports denied access without requesting permission from its input callback.
 Windows requires the interactive input desktop, not a session-zero service.
 Linux requires an X11 session with RECORD and the `libxcb`/`libxcb-record` libraries.
 Linux release jobs use Ubuntu 24.04; older libc versions are not a compatibility promise.

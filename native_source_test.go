@@ -292,3 +292,14 @@ func TestMacDestinationAttribution(t *testing.T) {
 		})
 	}
 }
+
+func TestMiddleClickSelectionMetadata(t *testing.T) {
+	o, err := decodeSnapshot([]byte(`{"key":"mouse","time_ns":1,"kind":"mouse","action":"middle_click","source":"iterm_selection","button":2,"clicks":1,"modifiers":["option"],"trigger_reason":"saved binding","issue":"selection is private"}`), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := o.Event
+	if e.Trigger.Source != "iterm_selection" || e.Trigger.Button != 2 || e.Trigger.ClickCount != 1 || len(e.Trigger.Modifiers) != 1 || e.Trigger.Reason != "saved binding" || e.Content.Evidence != Unavailable || e.Content.Reason != "selection is private" || len(e.Content.Representations) != 0 {
+		t.Fatal(e)
+	}
+}

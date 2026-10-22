@@ -95,6 +95,8 @@ jobs:
           if [ "$GOOS" = darwin ]; then
             "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework ApplicationServices native_common.c internal/nativecheck/darwin.m -o bin/darwincheck
             bin/darwincheck
+            "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework CoreServices internal/nativecheck/terminal.m -o bin/terminalcheck
+            bin/terminalcheck
           fi
       - name: Package native binary
         run: |
