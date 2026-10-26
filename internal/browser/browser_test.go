@@ -48,3 +48,29 @@ func TestBrowserAutomation(t *testing.T) {
 		t.Fatal(value, status)
 	}
 }
+
+func TestFromApplicationAccessibilityURL(t *testing.T) {
+	chrome := model.Application{Name: model.Known("Google Chrome"), BundleID: model.Known("com.google.Chrome")}
+	// The web area URL is preferred over the window document attribute.
+	b := FromApplication(chrome, "Example – Google Chrome", "file:///local.html", "https://example.com/path")
+	if b == nil || b.URL.Value != "https://example.com/path" || b.URL.Evidence != model.Inferred {
+		t.Fatalf("web area url not used: %+v", b)
+	}
+	if b.Title.Value != "Example – Google Chrome" {
+		t.Fatalf("title not captured: %+v", b)
+	}
+	// With no web area URL, Safari's document attribute still supplies the URL.
+	safari := model.Application{Name: model.Known("Safari"), BundleID: model.Known("com.apple.Safari")}
+	if b := FromApplication(safari, "", "https://apple.com", ""); b == nil || b.URL.Value != "https://apple.com" {
+		t.Fatalf("document url fallback failed: %+v", b)
+	}
+	// Non-absolute or non-http web area values are ignored.
+	if b := FromApplication(chrome, "", "", "chrome://newtab/"); b == nil || b.URL.Value != "" {
+		t.Fatalf("non-http url should be ignored: %+v", b)
+	}
+	// Non-browser applications produce no browser context.
+	term := model.Application{Name: model.Known("Terminal"), BundleID: model.Known("com.apple.Terminal")}
+	if b := FromApplication(term, "zsh", "", "https://example.com"); b != nil {
+		t.Fatalf("terminal should not be a browser: %+v", b)
+	}
+}
