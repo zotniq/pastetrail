@@ -59,7 +59,7 @@ type File struct {
 	MetadataError string     `json:"metadata_error,omitempty"`
 }
 
-// Content is a snapshot of the available clipboard representations at capture time.
+// Content holds captured clipboard representations or terminal payload bytes.
 type Content struct {
 	Representations []Representation `json:"representations,omitempty"`
 	Files           []File           `json:"files,omitempty"`
@@ -99,7 +99,36 @@ type Browser struct {
 	Frame Field[string] `json:"frame"`
 }
 
-// Context is one identifiable layer of a terminal, tmux, SSH, or container session.
+// UIElement is metadata exposed by an application's accessibility tree.
+// It excludes the control's text contents and selected text.
+type UIElement struct {
+	Role            Field[string] `json:"role"`
+	RoleDescription Field[string] `json:"role_description"`
+	Subrole         Field[string] `json:"subrole"`
+	Identifier      Field[string] `json:"identifier"`
+	Title           Field[string] `json:"title"`
+	Description     Field[string] `json:"description"`
+}
+
+// TextRange uses zero-based UTF-16 offsets in the accessible control's text.
+// Virtualized editors may expose only part of a document.
+type TextRange struct {
+	Start  int64 `json:"start"`
+	Length int64 `json:"length"`
+}
+
+// Focus describes the control sampled at a paste attempt. Path starts with the
+// focused control and proceeds through its parents, excluding the window.
+type Focus struct {
+	Kind        Field[string]     `json:"kind"`
+	Path        []UIElement       `json:"path,omitempty"`
+	DocumentURI Field[string]     `json:"document_uri"`
+	Selection   Field[*TextRange] `json:"selection"`
+	Incomplete  bool              `json:"incomplete,omitempty"`
+	Reason      string            `json:"reason,omitempty"`
+}
+
+// Context identifies a session or process at the paste destination.
 // PID always belongs to the specified Host and, if present, Container.
 type Context struct {
 	Kind             string        `json:"kind"`
@@ -112,12 +141,24 @@ type Context struct {
 	Session          Field[string] `json:"session"`
 	Pane             Field[string] `json:"pane"`
 	Container        Field[string] `json:"container"`
+	ProcessGroup     Field[int]    `json:"process_group"`
+}
+
+// Delivery records bytes forwarded to a PTY, not application consumption.
+type Delivery struct {
+	Transport   string        `json:"transport"`
+	Evidence    Evidence      `json:"evidence"`
+	Bytes       int           `json:"bytes"`
+	Content     Content       `json:"content"`
+	Correlation Field[string] `json:"correlation"`
+	Reason      string        `json:"reason"`
 }
 
 // Destination contains the foreground application and any identifiable nested context.
 type Destination struct {
 	Application Application `json:"application"`
 	Browser     *Browser    `json:"browser,omitempty"`
+	Focus       *Focus      `json:"focus,omitempty"`
 	Contexts    []Context   `json:"contexts,omitempty"`
 }
 
@@ -130,6 +171,7 @@ type Event struct {
 	Trigger     Trigger     `json:"trigger"`
 	Content     Content     `json:"content"`
 	Destination Destination `json:"destination"`
+	Delivery    *Delivery   `json:"delivery,omitempty"`
 }
 
 // Capability reports an observable feature or a detection gap.

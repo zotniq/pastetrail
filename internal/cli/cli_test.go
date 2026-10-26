@@ -19,7 +19,7 @@ func (mockMonitor) Capabilities(context.Context) []pastetrail.Capability {
 	return []pastetrail.Capability{{Feature: "test", Status: "supported"}}
 }
 func (m mockMonitor) Run(_ context.Context, f func(pastetrail.Record) error) error {
-	if err := f(pastetrail.Record{SchemaVersion: 1, Type: "capabilities"}); err != nil {
+	if err := f(pastetrail.Record{SchemaVersion: 1, Type: "paste_attempt", Event: &pastetrail.Event{}}); err != nil {
 		return err
 	}
 	return m.err
@@ -45,7 +45,7 @@ func TestCommands(t *testing.T) {
 	}{
 		{nil, 2, "usage:"}, {[]string{"version"}, 0, "v0.1.0"}, {[]string{"help"}, 0, "usage:"},
 		{[]string{"wrong"}, 2, "unknown command"}, {[]string{"doctor"}, 0, "supported"},
-		{[]string{"daemon"}, 0, "capabilities"}, {[]string{"daemon", "-h"}, 0, "Usage"},
+		{[]string{"daemon"}, 0, "destination"}, {[]string{"daemon", "-h"}, 0, "Usage"},
 		{[]string{"daemon", "--wrong"}, 2, "flag provided"}, {[]string{"daemon", "extra"}, 2, "unexpected"},
 	} {
 		t.Run(strings.Join(tt.args, " "), func(t *testing.T) {

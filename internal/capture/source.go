@@ -48,12 +48,17 @@ func (s *nativeSource) Capabilities(context.Context) []model.Capability {
 		{Feature: "middle_click", Status: middleClickStatus(status), Reason: "X11 PRIMARY selection; macOS iTerm2 saved clipboard/selection middle-button bindings only; iTerm selection content and clicked pane identity unavailable"},
 		{Feature: "clipboard_content", Status: status, Reason: "text, HTML, RTF, and file references when exposed; snapshots can race clipboard changes"},
 		{Feature: "application_context", Status: status, Reason: "macOS event target PID or inferred Accessibility focus; foreground context on other platforms; available metadata depends on permissions and applications"},
+		focusCapability(),
 		{Feature: "browser_context", Status: "partial", Reason: "macOS Safari/Chromium active-tab URL via Automation with Accessibility document fallback; window title elsewhere; tab IDs, renderer PIDs and frames unavailable"},
-		{Feature: "terminal_context", Status: "partial", Reason: "macOS iTerm2/Terminal active TTY via Automation; local foreground TTY processes and tmux when unambiguous; Windows console mapping and mouse-selected panes unavailable"},
-		{Feature: "ssh_remote_context", Status: "partial", Reason: "local SSH command and destination only; remote foreground process, PID, and working directory unavailable"},
-		{Feature: "container_context", Status: "partial", Reason: "container identity inferred from recognized local commands; interior process information unavailable"},
 		{Feature: "attempt_confirmation", Status: "unavailable", Reason: "shortcut observation indicates possible intent; insertion, clipboard format consumption, and application remapping are not observable"},
 	}
+}
+
+func focusCapability() model.Capability {
+	if runtime.GOOS == "darwin" {
+		return model.Capability{Feature: "focused_control_context", Status: "partial", Reason: "requires Accessibility permission and app accessibility support; control metadata and focused document URI are recorded when exposed; terminal sessions are identified separately through the PTY relay"}
+	}
+	return model.Capability{Feature: "focused_control_context", Status: "unavailable", Reason: "focused control capture is currently implemented only on macOS"}
 }
 
 func middleClickStatus(status string) string {

@@ -9,6 +9,7 @@ import (
 	"github.com/zotniq/pastetrail/internal/application"
 	"github.com/zotniq/pastetrail/internal/browser"
 	"github.com/zotniq/pastetrail/internal/content"
+	"github.com/zotniq/pastetrail/internal/focus"
 	"github.com/zotniq/pastetrail/internal/model"
 )
 
@@ -25,7 +26,8 @@ type nativeSnapshot struct {
 	Clicks        int      `json:"clicks"`
 	Modifiers     []string `json:"modifiers"`
 	application.Snapshot
-	Document string `json:"document"`
+	Focus    *focus.Snapshot `json:"focus"`
+	Document string          `json:"document"`
 	Formats  []struct {
 		Type      string `json:"type"`
 		Data      []byte `json:"data"`
@@ -84,6 +86,9 @@ func decodeSnapshot(data []byte, limit int) (decodedObservation, error) {
 		}
 	}
 	e.Destination.Application = application.FromSnapshot(n.Snapshot)
+	if n.TargetMethod != "unavailable" {
+		e.Destination.Focus = focus.FromSnapshot(n.Focus)
+	}
 	e.Destination.Browser = browser.FromApplication(e.Destination.Application, n.Title, n.Document)
 	return decodedObservation{Observation: model.Observation{Key: n.Key, Event: e}, dropped: n.Dropped}, nil
 }

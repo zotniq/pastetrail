@@ -13,6 +13,9 @@ import (
 	"github.com/zotniq/pastetrail/internal/capture"
 	"github.com/zotniq/pastetrail/internal/content"
 	"github.com/zotniq/pastetrail/internal/model"
+	"github.com/zotniq/pastetrail/internal/monitoring"
+	"github.com/zotniq/pastetrail/internal/process"
+	"github.com/zotniq/pastetrail/internal/terminalipc"
 )
 
 var (
@@ -20,7 +23,7 @@ var (
 	ErrUnsupported = model.ErrUnsupported
 )
 
-// Observation associates a native attempt with a snapshot. Key identifies the
+// Observation associates a paste attempt with a snapshot. Key identifies the
 // attempt, not its content; different pastes must have different keys.
 type Observation = model.Observation
 
@@ -28,11 +31,13 @@ type Observation = model.Observation
 // block; native implementations must buffer independently and report overflows.
 type Source = model.Source
 
-// Options controls payload size and duplicate tracking.
+// Options controls payload size, duplicate tracking, and the terminal receiver.
 type Options struct {
-	MaxContentBytes int
-	DedupWindow     time.Duration
-	MaxDedupEntries int
+	MaxContentBytes      int
+	DedupWindow          time.Duration
+	MaxDedupEntries      int
+	TerminalSocket       string
+	DisableTerminalRelay bool
 }
 
 func (o Options) defaults() (Options, error) {
@@ -63,13 +68,24 @@ type Monitor struct {
 	newID   func() (string, error)
 }
 
-// New creates the native monitor for the current operating system.
+// New combines native capture with a local terminal receiver on macOS and Linux.
 func New(options Options) (*Monitor, error) {
 	o, err := options.defaults()
 	if err != nil {
 		return nil, err
 	}
-	return NewWithSource(capture.New(o.MaxContentBytes), o)
+	var source Source = capture.New(o.MaxContentBytes)
+	if terminalipc.Supported && !o.DisableTerminalRelay {
+		path := o.TerminalSocket
+		if path == "" {
+			path, err = terminalipc.DefaultPath()
+			if err != nil {
+				return nil, err
+			}
+		}
+		source = &monitoring.Source{Native: source, Receiver: terminalipc.Server{Path: path}, Limit: o.MaxContentBytes, Enrich: process.Enrich}
+	}
+	return NewWithSource(source, o)
 }
 
 // NewWithSource supports embedding an application-provided observation source.

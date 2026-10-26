@@ -99,8 +99,8 @@ jobs:
           if [ "$GOOS" = darwin ]; then
             "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework ApplicationServices internal/platform/native/common.c internal/platform/macos/tests/capture.m -o bin/darwincheck
             bin/darwincheck
-            "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework CoreServices internal/platform/macos/tests/automation.m -o bin/terminalcheck
-            bin/terminalcheck
+            "$CC" -Wall -Wextra -Werror "${sanitizer[@]}" -framework AppKit -framework CoreServices internal/platform/macos/tests/automation.m -o bin/browsercheck
+            bin/browsercheck
           fi
       - name: Package native binary
         run: |

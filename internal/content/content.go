@@ -28,20 +28,29 @@ func NormalizeEvent(e *model.Event, limit int) {
 		e.Trigger.Evidence = model.Inferred
 	}
 	fill(&e.Trigger.Automated, "input origin is not exposed")
-	if e.Content.Evidence == "" {
-		e.Content.Evidence = model.Unavailable
-		e.Content.Reason = "clipboard data was not captured"
+	normalizeContent(&e.Content, limit)
+	if e.Delivery != nil {
+		normalizeContent(&e.Delivery.Content, limit)
+		fill(&e.Delivery.Correlation, "native paste correlation is unavailable")
+	}
+	normalizeDestination(&e.Destination)
+}
+
+func normalizeContent(c *model.Content, limit int) {
+	if c.Evidence == "" {
+		c.Evidence = model.Unavailable
+		c.Reason = "content was not captured"
 	}
 	remaining := limit
-	for i := range e.Content.Representations {
-		r := &e.Content.Representations[i]
+	for i := range c.Representations {
+		r := &c.Representations[i]
 		data := []byte(r.Data)
 		if r.Encoding == "base64" {
 			decoded, err := base64.StdEncoding.DecodeString(r.Data)
 			if err != nil {
 				r.Data = ""
 				r.Truncated = true
-				e.Content.Incomplete = true
+				c.Incomplete = true
 				continue
 			}
 			data = decoded
@@ -65,10 +74,13 @@ func NormalizeEvent(e *model.Event, limit int) {
 		}
 		remaining -= len(data)
 		if r.Truncated {
-			e.Content.Incomplete = true
+			c.Incomplete = true
 		}
 	}
-	a := &e.Destination.Application
+}
+
+func normalizeDestination(d *model.Destination) {
+	a := &d.Application
 	fill(&a.Name, "application identity is unavailable")
 	fill(&a.Executable, "executable is unavailable")
 	fill(&a.PID, "process identity is unavailable")
@@ -79,15 +91,29 @@ func NormalizeEvent(e *model.Event, limit int) {
 	fill(&a.Bounds, "window bounds are unavailable")
 	fill(&a.ContentBounds, "window content bounds are unavailable on this platform")
 	fill(&a.MemoryUsage, "process resident memory usage is unavailable")
-	if b := e.Destination.Browser; b != nil {
+	if b := d.Browser; b != nil {
 		fill(&b.TabID, "browser does not expose a tab ID")
 		fill(&b.PID, "browser does not expose a tab renderer PID")
 		fill(&b.Title, "tab title is unavailable")
 		fill(&b.URL, "browser URL is unavailable without application integration")
 		fill(&b.Frame, "frame is unavailable without application integration")
 	}
-	for i := range e.Destination.Contexts {
-		c := &e.Destination.Contexts[i]
+	if f := d.Focus; f != nil {
+		fill(&f.Kind, "focused control identity is unavailable")
+		fill(&f.DocumentURI, "focused document URI is unavailable")
+		fill(&f.Selection, "focused text selection range is unavailable")
+		for i := range f.Path {
+			p := &f.Path[i]
+			fill(&p.Role, "control role is unavailable")
+			fill(&p.RoleDescription, "control role description is unavailable")
+			fill(&p.Subrole, "control subrole is unavailable")
+			fill(&p.Identifier, "control identifier is unavailable")
+			fill(&p.Title, "control title is unavailable")
+			fill(&p.Description, "control description is unavailable")
+		}
+	}
+	for i := range d.Contexts {
+		c := &d.Contexts[i]
 		fill(&c.Name, "context name is unavailable")
 		fill(&c.PID, "process identity is unavailable")
 		fill(&c.Host, "host identity is unavailable")
@@ -97,6 +123,7 @@ func NormalizeEvent(e *model.Event, limit int) {
 		fill(&c.Session, "session is unavailable")
 		fill(&c.Pane, "pane is unavailable")
 		fill(&c.Container, "container identity is unavailable")
+		fill(&c.ProcessGroup, "foreground process group is unavailable")
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 )
 
 func TestNormalize(t *testing.T) {
-	e := model.Event{Destination: model.Destination{Browser: &model.Browser{}, Contexts: []model.Context{{}}}}
+	e := model.Event{Destination: model.Destination{Browser: &model.Browser{}, Focus: &model.Focus{Path: []model.UIElement{{}}}, Contexts: []model.Context{{}}}}
 	NormalizeEvent(&e, 10)
 	if e.Trigger.Kind != "unknown" || e.Trigger.Evidence != model.Inferred || e.Trigger.Automated.Evidence != model.Unavailable || e.Content.Evidence != model.Unavailable {
 		t.Fatal(e)
@@ -20,6 +20,10 @@ func TestNormalize(t *testing.T) {
 		t.Fatal(e.Destination)
 	}
 	f := model.Known(42)
+	focus := e.Destination.Focus
+	if focus.Kind.Evidence != model.Unavailable || focus.DocumentURI.Evidence != model.Unavailable || focus.Selection.Evidence != model.Unavailable || focus.Path[0].Role.Evidence != model.Unavailable || focus.Path[0].RoleDescription.Evidence != model.Unavailable {
+		t.Fatal(focus)
+	}
 	fill(&f, "missing")
 	if f.Value != 42 || f.Evidence != model.Observed {
 		t.Fatal(f)

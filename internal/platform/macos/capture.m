@@ -7,6 +7,7 @@
 #include <libproc.h>
 #include <stdio.h>
 #include <string.h>
+#include "focus.h"
 
 static CFMachPortRef tap;
 static CFRunLoopSourceRef tap_source;
@@ -77,8 +78,10 @@ static pid_t destination_context(pt_json *j, CGEventRef event, pid_t (*query_foc
      * main loop. Resolve each event's recipient before looking up app metadata. */
     paste_target target = event_target(event, query_focus);
     pt_property(j, "target_method", target.method);
-    if (!target.pid)
+    if (!target.pid) {
+        focus_unavailable(j, "input event target application is unavailable");
         return 0;
+    }
     pt_put(j, ",\"pid\":");
     pt_number(j, target.pid);
     NSRunningApplication *app =
@@ -89,9 +92,14 @@ static pid_t destination_context(pt_json *j, CGEventRef event, pid_t (*query_foc
         pt_property(j, "bundle_id", [[app bundleIdentifier] UTF8String]);
         pt_property(j, "bundle_path", [[[app bundleURL] path] UTF8String]);
     }
-    if (!accessibility || (event && CGEventGetType(event) == kCGEventOtherMouseUp))
+    if (!accessibility || (event && CGEventGetType(event) == kCGEventOtherMouseUp)) {
+        focus_unavailable(j, !accessibility ? "Accessibility permission is required to inspect the focused control"
+                                           : "keyboard focus does not identify the clicked control");
         return target.pid;
+    }
     AXUIElementRef application = AXUIElementCreateApplication(target.pid);
+    focus_context(j, application, AXUIElementCopyAttributeValue,
+                  AXUIElementCopyMultipleAttributeValues);
     AXUIElementSetMessagingTimeout(application, 0.03);
     CFTypeRef window = NULL;
     if (AXUIElementCopyAttributeValue(application, kAXFocusedWindowAttribute, &window) ==
