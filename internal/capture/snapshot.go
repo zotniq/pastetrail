@@ -26,9 +26,10 @@ type nativeSnapshot struct {
 	Clicks        int      `json:"clicks"`
 	Modifiers     []string `json:"modifiers"`
 	application.Snapshot
-	Focus    *focus.Snapshot `json:"focus"`
-	Document string          `json:"document"`
-	Formats  []struct {
+	Focus      *focus.Snapshot `json:"focus"`
+	Document   string          `json:"document"`
+	BrowserURL string          `json:"browser_url"`
+	Formats    []struct {
 		Type      string `json:"type"`
 		Data      []byte `json:"data"`
 		Size      int    `json:"size"`
@@ -89,6 +90,6 @@ func decodeSnapshot(data []byte, limit int) (decodedObservation, error) {
 	if n.TargetMethod != "unavailable" {
 		e.Destination.Focus = focus.FromSnapshot(n.Focus)
 	}
-	e.Destination.Browser = browser.FromApplication(e.Destination.Application, n.Title, n.Document)
+	e.Destination.Browser = browser.FromApplication(e.Destination.Application, n.Title, n.Document, n.BrowserURL)
 	return decodedObservation{Observation: model.Observation{Key: n.Key, Event: e}, dropped: n.Dropped}, nil
 }

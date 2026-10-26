@@ -49,7 +49,7 @@ func (s *nativeSource) Capabilities(context.Context) []model.Capability {
 		{Feature: "clipboard_content", Status: status, Reason: "text, HTML, RTF, and file references when exposed; snapshots can race clipboard changes"},
 		{Feature: "application_context", Status: status, Reason: "macOS event target PID or inferred Accessibility focus; foreground context on other platforms; available metadata depends on permissions and applications"},
 		focusCapability(),
-		{Feature: "browser_context", Status: "partial", Reason: "macOS Safari/Chromium active-tab URL via Automation with Accessibility document fallback; window title elsewhere; tab IDs, renderer PIDs and frames unavailable"},
+		{Feature: "browser_context", Status: "partial", Reason: "macOS Safari/Chromium active-tab URL from the Accessibility web area (one grant, no per-browser Automation), with Automation and the window document as fallbacks; window title elsewhere; tab IDs, renderer PIDs and frames unavailable"},
 		{Feature: "attempt_confirmation", Status: "unavailable", Reason: "shortcut observation indicates possible intent; insertion, clipboard format consumption, and application remapping are not observable"},
 	}
 }

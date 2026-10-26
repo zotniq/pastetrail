@@ -89,9 +89,13 @@ another CLI normally. Already-open, unwrapped terminals are not attached.
 
 On macOS, grant **Input Monitoring** to the executable or host running PasteTrail
 under System Settings → Privacy & Security. **Accessibility** supplies focused-control
-metadata; browser URL lookup may also require **Automation** access.
-`doctor` reports capabilities without starting capture or requesting permissions.
-Restart the relevant host/daemon after changing permissions.
+metadata and the active-tab URL for Safari and Chromium browsers (Chrome, Edge,
+Brave, Arc, Opera, Vivaldi, and similar): PasteTrail reads the URL from the browser's
+accessibility web area, so this single grant covers every browser and no per-browser
+**Automation** approval is needed. If Accessibility is not granted, PasteTrail can
+still fall back to a per-browser Automation query, but that must be authorized once
+for each browser. `doctor` reports capabilities without starting capture or requesting
+permissions. Restart the relevant host/daemon after changing permissions.
 
 ### Options
 

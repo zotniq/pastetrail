@@ -64,7 +64,7 @@ func matchesName(s string) bool {
 }
 
 // FromApplication creates browser context when the attributed application is recognized.
-func FromApplication(a model.Application, title, document string) *model.Browser {
+func FromApplication(a model.Application, title, document, accessibilityURL string) *model.Browser {
 	if kindForBundle(a.BundleID.Value) == 0 && !matchesName(a.Name.Value+" "+a.Executable.Value) {
 		return nil
 	}
@@ -72,7 +72,11 @@ func FromApplication(a model.Application, title, document string) *model.Browser
 	if title != "" {
 		b.Title = model.Field[string]{Value: title, Evidence: model.Inferred, Reason: "window title of the attributed browser process"}
 	}
-	if strings.HasPrefix(document, "https://") || strings.HasPrefix(document, "http://") {
+	// Prefer the web area URL: it names the active tab across Chromium browsers,
+	// whereas the window document attribute is populated mainly by Safari.
+	if strings.HasPrefix(accessibilityURL, "https://") || strings.HasPrefix(accessibilityURL, "http://") {
+		b.URL = model.Field[string]{Value: accessibilityURL, Evidence: model.Inferred, Reason: "active tab URL read from the browser accessibility web area using Accessibility permission"}
+	} else if strings.HasPrefix(document, "https://") || strings.HasPrefix(document, "http://") {
 		b.URL = model.Field[string]{Value: document, Evidence: model.Inferred, Reason: "focused window accessibility document URL"}
 	}
 	return b

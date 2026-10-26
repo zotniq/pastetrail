@@ -34,6 +34,53 @@ static NSString *ax_string(AXUIElementRef element, CFStringRef attribute) {
     return [result autorelease];
 }
 
+// A browser bundle whose active tab URL is readable from the accessibility tree.
+// Go's browser.kindForBundle validates the attribution; this only decides whether
+// the native capture pays for an AXWebArea traversal.
+static bool browser_bundle(NSString *bundle) {
+    if (![bundle length])
+        return false;
+    NSString *lower = [bundle lowercaseString];
+    NSArray *needles = @[
+        @"com.apple.safari", @"com.google.chrome", @"com.google.chrome.", @"com.brave.browser",
+        @"com.microsoft.edgemac", @"com.operasoftware.", @"com.vivaldi.vivaldi",
+        @"company.thebrowser.browser", @"com.mighty.app", @"com.ghostbrowser.gb1",
+        @"com.bookry.wavebox", @"com.pushplaylabs.sidekick", @"org.chromium.chromium"
+    ];
+    for (NSString *needle in needles)
+        if ([lower hasPrefix:needle] || [lower isEqualToString:needle])
+            return true;
+    return false;
+}
+
+// Find the active tab URL by locating the focused window's web area. This uses
+// only the Accessibility permission already granted to inspect focused controls,
+// so no per-browser Automation (Apple Events) authorization is needed.
+static NSString *ax_browser_url(AXUIElementRef window) {
+    NSMutableArray *queue = [NSMutableArray arrayWithObject:(__bridge id)window];
+    double deadline = focus_time() + 0.06;
+    NSUInteger budget = 600;
+    for (NSUInteger i = 0; i < [queue count] && budget-- > 0 && focus_time() < deadline; i++) {
+        AXUIElementRef element = (__bridge AXUIElementRef)[queue objectAtIndex:i];
+        AXUIElementSetMessagingTimeout(element, 0.03);
+        NSString *role = ax_string(element, kAXRoleAttribute);
+        if ([role isEqualToString:@"AXWebArea"]) {
+            NSString *url = ax_string(element, kAXURLAttribute);
+            if ([url hasPrefix:@"http://"] || [url hasPrefix:@"https://"])
+                return url;
+        }
+        CFTypeRef children = NULL;
+        if (AXUIElementCopyAttributeValue(element, kAXChildrenAttribute, &children) ==
+                kAXErrorSuccess &&
+            children) {
+            if (CFGetTypeID(children) == CFArrayGetTypeID())
+                [queue addObjectsFromArray:(__bridge NSArray *)children];
+            CFRelease(children);
+        }
+    }
+    return nil;
+}
+
 static pid_t focused_pid(void) {
     if (!AXIsProcessTrusted())
         return 0;
@@ -101,6 +148,13 @@ static pid_t destination_context(pt_json *j, CGEventRef event, pid_t (*query_foc
     focus_context(j, application, AXUIElementCopyAttributeValue,
                   AXUIElementCopyMultipleAttributeValues);
     AXUIElementSetMessagingTimeout(application, 0.03);
+    // Chromium builds its accessibility tree only once an assistive client asks.
+    // Requesting it here lets the first browser paste resolve a URL without a
+    // per-application Automation grant.
+    bool browser = browser_bundle([[NSRunningApplication
+        runningApplicationWithProcessIdentifier:target.pid] bundleIdentifier]);
+    if (browser)
+        AXUIElementSetAttributeValue(application, CFSTR("AXManualAccessibility"), kCFBooleanTrue);
     CFTypeRef window = NULL;
     if (AXUIElementCopyAttributeValue(application, kAXFocusedWindowAttribute, &window) ==
             kAXErrorSuccess &&
@@ -112,6 +166,11 @@ static pid_t destination_context(pt_json *j, CGEventRef event, pid_t (*query_foc
             pt_property(j, "title", [title UTF8String]);
         if (document)
             pt_property(j, "document", [document UTF8String]);
+        if (browser) {
+            NSString *url = ax_browser_url((AXUIElementRef)window);
+            if (url)
+                pt_property(j, "browser_url", [url UTF8String]);
+        }
     }
     if (window)
         CFRelease(window);
