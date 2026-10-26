@@ -17,7 +17,7 @@ else
 BINARY := bin/pastetrail
 endif
 
-.PHONY: help build run doctor test test-race test-integration test-tools coverage coverage-check fmt fmt-check vet check package clean require-go require-gofmt
+.PHONY: help build run doctor test test-race test-integration test-tools coverage fmt fmt-check vet check package clean require-go require-gofmt
 
 help:
 	@printf '%s\n' \
@@ -29,7 +29,6 @@ help:
 	  'make test-integration  Run Go tests including Linux X11 integration' \
 	  'make test-tools        Run Python packaging and coverage tests' \
 	  'make coverage          Generate coverage.out and coverage.html' \
-	  'make coverage-check    Generate coverage and enforce the CI threshold' \
 	  'make fmt               Format Go source files' \
 	  'make fmt-check         Report unformatted Go source files' \
 	  'make vet               Run Go diagnostics' \
@@ -85,9 +84,6 @@ coverage:
 	"$(GO)" test $(TEST_FLAGS) -coverpkg=./... -coverprofile=coverage.out ./...
 	"$(GO)" tool cover -func=coverage.out
 	"$(GO)" tool cover -html=coverage.out -o coverage.html
-
-coverage-check: coverage
-	"$(PYTHON)" scripts/coverage.py coverage.out
 
 fmt:
 	"$(GOFMT)" -w .

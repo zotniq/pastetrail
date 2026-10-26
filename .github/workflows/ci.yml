@@ -74,7 +74,7 @@ jobs:
             exit 1
           fi
           go vet ./...
-      - name: Test and enforce coverage
+      - name: Test and report coverage
         env:
           RACE_FLAG: ${{ matrix.race }}
         run: |

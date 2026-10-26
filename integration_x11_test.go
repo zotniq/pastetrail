@@ -78,7 +78,7 @@ func TestX11Integration(t *testing.T) {
 	host, _ := os.Hostname()
 	run("xprop", "-id", window, "-f", "WM_CLIENT_MACHINE", "8s", "-set", "WM_CLIENT_MACHINE", host)
 
-	monitor, err := New(Options{})
+	monitor, err := New(Options{DisableTerminalRelay: true})
 	if err != nil {
 		t.Fatal(err)
 	}

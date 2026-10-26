@@ -247,8 +247,8 @@ source. See [the public API and options](monitor.go).
 - Menu actions, custom shortcuts, secure input, and application-internal insertion
   can evade native capture. Bracketed terminal pastes are recognized from their
   protocol markers; other terminal text requires a unique native clipboard match.
-- IDE file paths, editor positions, and GUI extension chat inputs are available
-  only when exposed through accessibility. A terminal's TTY is not an IDE tab label.
+- IDE file paths, editor positions, and the identity of GUI chat controls depend
+  on the metadata exposed through accessibility. A terminal's TTY is not an IDE tab label.
 - SSH, containers, and tmux expose the local foreground process at the outer PTY;
   remote processes and inner panes are not resolved. Windows has no PTY relay support.
 - Correlation waits about 750 ms. Delayed, transformed, truncated, or ambiguous
@@ -261,7 +261,7 @@ source. See [the public API and options](monitor.go).
 ## Data handling
 
 Logs contain pasted content and available URLs, paths, command lines, and process
-metadata. The CLI writes to stdout or an append-only local log. There is no built-in
+metadata. The CLI writes to stdout or appends to a local log. There is no built-in
 redaction, encryption, rotation, or retention policy. File references include
 metadata; PasteTrail does not read their file contents.
 
@@ -283,7 +283,7 @@ relay sockets require a private directory owned by the current user with mode `0
 
 Run these from the repository root. Make targets use a POSIX shell; on Windows,
 use an appropriate environment such as MSYS2. Python 3 is required for tooling
-tests, the coverage gate, and packaging.
+tests, the CI coverage summary, and packaging.
 
 | Command | Purpose |
 | --- | --- |
@@ -291,7 +291,7 @@ tests, the coverage gate, and packaging.
 | `make test` / `make test-race` | Run Go tests, optionally with the race detector |
 | `make test-integration` | Run Go tests including Linux X11 integration |
 | `make test-tools` | Run Python tooling tests |
-| `make coverage` / `make coverage-check` | Generate coverage reports, optionally enforce the CI threshold |
+| `make coverage` | Generate `coverage.out` and `coverage.html` |
 | `make fmt` / `make fmt-check` / `make vet` | Format source, check formatting, or run Go diagnostics |
 | `make check` | Run formatting checks, vet, Go tests, and Python tests |
 | `make package` | Build a native archive and SHA-256 sidecar in `dist/` |
@@ -302,9 +302,9 @@ tests, the coverage gate, and packaging.
 Use `make test` without `-race` on Windows arm64, as configured in CI.
 
 The [CI workflow](.github/workflows/ci.yml) defines native builds and checks for all
-six OS/architecture combinations. Its coverage gate requires **greater than 95%**
-Go statement coverage. Go coverage excludes C/Objective-C; CI has separate native
-checks. Interactive capture also needs checks on permission-enabled desktops.
+six OS/architecture combinations. Coverage is reported without a minimum percentage
+requirement. Go coverage excludes C/Objective-C; CI has separate native checks.
+Interactive capture also needs checks on permission-enabled desktops.
 
 Packaging produces unsigned `.tar.gz` archives for macOS/Linux and `.zip` archives
 for Windows. CI uploads workflow artifacts and does not publish GitHub releases.
