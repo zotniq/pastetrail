@@ -27,15 +27,6 @@ static NSAppleEventDescriptor *first_element_spec(OSType type) {
     return [window coerceToDescriptorType:typeObjectSpecifier];
 }
 
-static NSAppleEventDescriptor *terminal_tty_spec(bool iterm) {
-    if (iterm) {
-        NSAppleEventDescriptor *window =
-            property_spec('Crwn', [NSAppleEventDescriptor nullDescriptor]);
-        return property_spec('Stty', property_spec('Wcsn', window));
-    }
-    return property_spec('ttty', property_spec('tcnt', first_element_spec(cWindow)));
-}
-
 static NSAppleEventDescriptor *browser_url_spec(int kind) {
     if (kind == 2)
         return property_spec('pURL', first_element_spec(cDocument));
@@ -43,7 +34,7 @@ static NSAppleEventDescriptor *browser_url_spec(int kind) {
 }
 
 // Address the captured PID, never a name that could launch or select another app.
-// Read-only terminal/browser queries run on the enrichment thread, outside the input tap.
+// Browser queries run outside the input tap.
 static int read_app_string(int pid, NSAppleEventDescriptor *spec, char *output, size_t size,
                            OSStatus (*permission)(const AEAddressDesc *, AEEventClass, AEEventID,
                                                   Boolean),
@@ -85,20 +76,6 @@ static int read_app_string(int pid, NSAppleEventDescriptor *spec, char *output, 
         }
         return status;
     }
-}
-
-static int read_terminal_tty(int pid, bool iterm, char *tty, size_t size,
-                             OSStatus (*permission)(const AEAddressDesc *, AEEventClass, AEEventID,
-                                                    Boolean),
-                             OSStatus (*send)(const AppleEvent *, AppleEvent *, AESendMode, long)) {
-    @autoreleasepool {
-        return read_app_string(pid, terminal_tty_spec(iterm), tty, size, permission, send);
-    }
-}
-
-int pt_terminal_tty(int pid, int iterm, char *tty, size_t size) {
-    return read_terminal_tty(pid, iterm != 0, tty, size, AEDeterminePermissionToAutomateTarget,
-                             AESendMessage);
 }
 
 int pt_browser_url(int pid, int kind, char *url, size_t size) {

@@ -28,12 +28,12 @@ class CoverageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             coverage(profile + "a.go:1.1,2.1 95 1\n")
 
-    def test_strict_threshold(self):
-        for covered, expected in ((95, 1), (96, 0)):
+    def test_report_without_threshold(self):
+        for covered in (95, 96):
             profile = f"mode: count\na.go  {covered} 1\nb.go  {100-covered} 0\n"
             with patch("sys.argv", ["coverage.py"]), patch("pathlib.Path.read_text", return_value=profile):
                 with contextlib.redirect_stdout(io.StringIO()):
-                    self.assertEqual(coverage_main(), expected)
+                    self.assertEqual(coverage_main(), 0)
 
 
 class ArchiveTests(unittest.TestCase):

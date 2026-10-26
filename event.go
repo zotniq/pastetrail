@@ -31,7 +31,16 @@ type WindowBounds = model.WindowBounds
 // Browser describes a tab independently of the browser process ID.
 type Browser = model.Browser
 
-// Context is one identifiable layer of a terminal, tmux, SSH, or container session.
+// UIElement is accessibility metadata without text contents or selected text.
+type UIElement = model.UIElement
+
+// TextRange uses zero-based UTF-16 offsets in the accessible control's text.
+type TextRange = model.TextRange
+
+// Focus describes the focused control and its parents at a paste attempt.
+type Focus = model.Focus
+
+// Context identifies a session or process at the paste destination.
 // PID always belongs to the specified Host and, if present, Container.
 type Context = model.Context
 
@@ -40,6 +49,9 @@ type Destination = model.Destination
 
 // Event describes an attempt. It never asserts that content was inserted.
 type Event = model.Event
+
+// Delivery records input forwarded to a terminal session.
+type Delivery = model.Delivery
 
 // Capability reports an observable feature or a detection gap.
 type Capability = model.Capability

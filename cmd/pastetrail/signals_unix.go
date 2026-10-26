@@ -7,4 +7,4 @@ import (
 	"syscall"
 )
 
-var terminationSignals = []os.Signal{os.Interrupt, syscall.SIGTERM}
+var terminationSignals = []os.Signal{os.Interrupt, syscall.SIGTERM, syscall.SIGHUP}

@@ -40,13 +40,14 @@ def archive_files(destination, files, epoch, windows):
 
 def main():
     os.chdir(ROOT)
+    go = os.environ.get("GO", "go")
     version = sys.argv[1] if len(sys.argv) > 1 else subprocess.check_output(
         ["git", "describe", "--tags", "--always", "--dirty"], text=True
     ).strip()
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._+-]*", version):
         raise ValueError("version must contain only letters, digits, periods, +, -, or _")
     config = json.loads(subprocess.check_output(
-        ["go", "env", "-json", "GOOS", "GOARCH", "CGO_ENABLED", "GOROOT"], text=True
+        [go, "env", "-json", "GOOS", "GOARCH", "CGO_ENABLED", "GOROOT"], text=True
     ))
     goos, arch = config["GOOS"], config["GOARCH"]
     if config["CGO_ENABLED"] != "1":
@@ -59,7 +60,7 @@ def main():
     directory.mkdir(parents=True, exist_ok=True)
     binary = directory / binary_name
     subprocess.run([
-        "go", "build", "-trimpath", "-ldflags", f"-s -w -X main.version={version}",
+        go, "build", "-trimpath", "-ldflags", f"-s -w -X main.version={version}",
         "-o", str(binary), "./cmd/pastetrail",
     ], check=True)
     epoch = int(os.environ.get("SOURCE_DATE_EPOCH") or subprocess.check_output(

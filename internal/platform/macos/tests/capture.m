@@ -5,6 +5,7 @@
 #include <pthread.h>
 #include <string.h>
 #include <unistd.h>
+#include "focus.h"
 
 static pid_t fixture_focus;
 static unsigned focus_queries;
@@ -153,6 +154,7 @@ static void *check_destinations(void *unused) {
         CFRelease(event);
         check_pointer_bindings();
         check_window_metadata();
+        check_focus_metadata();
     }
     return NULL;
 }
